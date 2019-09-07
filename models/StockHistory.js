@@ -2,12 +2,19 @@ var StockHistory = function(pDb) {
     this.db = pDb;
     createStockHistoryTable(pDb);
 }
+var StockHistory = function(pDb, isCreateDb) {
+    this.db = pDb;
+    if (isCreateDb) {
+        createStockHistoryTable(pDb);
+    }
+}
 
 const PROPERTY_LIST = [
     "high",
     "low",
     "open",
     "close",
+    "volume",
     "macd_macd",
     "macd_histogram",
     "macd_signal",
@@ -17,6 +24,23 @@ const PROPERTY_LIST = [
     "ma200",
     "mfi14"
 ];
+
+function convert2DataArray(data) {
+    let retObj = { code: data[0].code, time: [] };
+
+    for (var i = 0; i < PROPERTY_LIST.length; i++) {
+        retObj[PROPERTY_LIST[i]] = [];
+    }
+
+    for (var i = 0; i < data.length; i++) {
+        retObj.time.push(data[i].time);
+        for (var j = 0; j < PROPERTY_LIST.length; j++) {
+            retObj[PROPERTY_LIST[j]].push(data[i][PROPERTY_LIST[j]]);
+        }
+    }
+    retObj.length = data.length;
+    return retObj;
+}
 
 function convert2DataObj(data) {
     let retObj = {};
@@ -81,7 +105,7 @@ function createQueryString_InsertData(data) {
     // trim the last comma
     queryStr = queryStr.substring(0, queryStr.length - 1);
     queryStr += ") VALUES ";
-    console.log(data.code + " with length " + data.length);
+
     // loop each record
     for (var i = 0; i < data.length; i++) {
 
@@ -122,8 +146,8 @@ StockHistory.prototype.get = function(code) {
         var strQuery = 'SELECT * FROM STOCK_HISTORY WHERE code = "' + code + '"';
 
         // Logging
-        console.log("Get data from STOCK_HISTORY table.");
-        console.log("SQL query: ", queryStr);
+        // console.log("Get data from STOCK_HISTORY table.");
+        // console.log("SQL query: ", strQuery);
 
         // Execute sql
         thisDb.all(strQuery, function(err, row) {
@@ -136,14 +160,16 @@ StockHistory.prototype.get = function(code) {
     });
 }
 
-StockHistory.prototype.getLimit = function(code, limit) {
+
+StockHistory.prototype.getLimit = function(code, limit, isAscByTime) {
     let thisDb = this.db;
+    let strOrder = isAscByTime === true ? "ASC" : "DESC";
     return new Promise(function(resolve, reject) {
-        var strQuery = 'SELECT * FROM STOCK_HISTORY WHERE code = "' + code + '" ORDER BY time ASC LIMIT ' + limit;
+        var strQuery = 'SELECT * FROM STOCK_HISTORY WHERE code = "' + code + '" ORDER BY time ' + strOrder + ' LIMIT ' + limit;
 
         // Logging
-        console.log("Get data from STOCK_HISTORY table.");
-        console.log("SQL query: ", queryStr);
+        // console.log("Get data from STOCK_HISTORY table.");
+        // console.log("SQL query: ", strQuery);
 
         // Execute sql
         thisDb.all(strQuery, function(err, row) {
@@ -187,4 +213,7 @@ StockHistory.prototype.convert2DataObj = function(data) {
     return convert2DataObj(data);
 }
 
+StockHistory.prototype.convert2DataArray = function(data) {
+    return convert2DataArray(data);
+}
 module.exports = StockHistory;

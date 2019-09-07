@@ -1,0 +1,93 @@
+
+// getStockHistoryAll("VIE").then(data => {
+//     var an = stockHistory.convert2DataObj(data);
+//     console.log(an);
+// });
+
+
+// getCodeList().then(codeList => {
+//     var stockHistory = new StockHistory(db);
+//     for (var i = 0; i < codeList.length; i++) {
+//         getStockHistoryAll(codeList[i]).then(res => {
+//             stockHistory.insert(res);
+//         });
+//     }
+// });
+// getSMA("FPT", 40, 20).then(res => {
+//     console.log(JSON.stringify(res));
+// });
+
+
+
+// stockHistory.get("FPT").then(res => {
+//     var an = [];
+//     var returnArr = [];
+//     for (var i = 0; i < res.length; i++) {
+//         an.push(res[i].close);
+//     }
+
+//     // create SMA data array
+//     returnArr = new Array(9 - 1).fill(0);
+//     returnArr = returnArr.concat(SMA.calculate({ period: 9, values: an }));
+//     console.log(returnArr);
+// });
+
+
+// count MACD
+// stockHistory.get("FPT").then(res => {
+//     var an = [];
+//     var returnArr = [];
+//     for (var i = 0; i < res.length; i++) {
+//         an.push(res[i].close);
+//     }
+//     var macdInput = {
+//         values: an,
+//         fastPeriod: 12,
+//         slowPeriod: 26,
+//         signalPeriod: 9,
+//         SimpleMAOscillator: false,
+//         SimpleMASignal: false
+//     }
+
+//     var output = MACD.calculate(macdInput);
+//     console.log(output);
+// });
+
+
+// count RSI
+// stockHistory.get("FPT").then(res => {
+//     var an = [];
+//     var returnArr = [];
+//     for (var i = 0; i < res.length; i++) {
+//         an.push(res[i].close);
+//     }
+//     var inputRSI = {
+//         values: an,
+//         period: 14
+//     };
+
+//     var output = RSI.calculate(inputRSI);
+//     console.log(output);
+// });
+
+
+https://dchart-api.vndirect.com.vn/dchart/history?resolution=D&symbol=FPT&from=1567728000&to=1567728000
+
+
+function scan2(stockArr) {
+    return axios("https://price-as01.vndirect.com.vn/priceservice/secinfo/snapshot/q=codes:FPTT,VCB,HPG,VSC,CMG,NDN,DTD,VGI", { "credentials": "omit", "headers": { "accept": "application/json, text/plain, */*", "sec-fetch-mode": "cors" }, "referrer": "https://trade-as.vndirect.com.vn/chung-khoan/danh-muc", "referrerPolicy": "no-referrer-when-downgrade", "body": null, "method": "GET", "mode": "cors" }).then(res => {
+        return res.data;
+    });
+}
+
+function scan(stockArr) {
+    var queryStr = stockArr.join(",");
+    return fetch(
+        "https://price-fpt-04.vndirect.com.vn/priceservice/secinfo/snapshot/q=codes:" + queryStr, {
+            "headers": {
+                "accept": "application/json, text/plain, */*",
+                "sec-fetch-mode": "cors"
+            },
+            "method": "GET",
+        }).then(res => res.json());
+}
