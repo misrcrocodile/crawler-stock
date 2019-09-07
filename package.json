@@ -1,0 +1,35 @@
+{
+  "name": "stock-exchange",
+  "version": "1.0.0",
+  "description": "stock exchange using nodejs misr",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/misscrocodile/StockExchange.git"
+  },
+  "keywords": [
+    "stock",
+    "exchange",
+    "nodejs",
+    "misr"
+  ],
+  "author": "Misrcrocodile",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/misscrocodile/StockExchange/issues"
+  },
+  "homepage": "https://github.com/misscrocodile/StockExchange#readme",
+  "dependencies": {
+    "axios": "^0.19.0",
+    "crawler": "^1.2.1",
+    "express": "^4.17.1",
+    "http": "0.0.0",
+    "node-fetch": "^2.6.0",
+    "sqlite3": "^4.1.0",
+    "technicalindicators": "^2.0.9",
+    "zlib": "^1.0.5"
+  }
+}
