@@ -110,6 +110,21 @@ function calculateMFI14(data) {
 }
 
 
+// function getSMA(StockCode, numberOfDate, period) {
+
+//     return getStockHistory(StockCode, numberOfDate).then(data => {
+//         let values = data.close;
+
+//         // create SMA data array
+//         data.SMA = new Array(period - 1).fill(0);
+//         data.SMA = data.SMA.concat(SMA.calculate({ period: period, values: values }));
+//         for (var i = 0; i < data.SMA.length; i++) {
+//             data.SMA[i] = data.SMA[i].toFixed(3);
+//         }
+//         return data;
+//     });
+// }
+
 module.exports = {
     calculateMACD,
     calculateMA,

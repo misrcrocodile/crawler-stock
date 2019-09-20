@@ -1,13 +1,13 @@
 var StockHistory = function(pDb) {
     this.db = pDb;
     createStockHistoryTable(pDb);
-}
-var StockHistory = function(pDb, isCreateDb) {
-    this.db = pDb;
-    if (isCreateDb) {
-        createStockHistoryTable(pDb);
-    }
-}
+};
+// var StockHistory = function(pDb, isCreateDb) {
+//     this.db = pDb;
+//     if (isCreateDb) {
+//         createStockHistoryTable(pDb);
+//     }
+// }
 
 const PROPERTY_LIST = [
     "high",
@@ -145,16 +145,16 @@ StockHistory.prototype.get = function(code) {
     return new Promise(function(resolve, reject) {
         var strQuery = 'SELECT * FROM STOCK_HISTORY WHERE code = "' + code + '"';
 
-        // Logging
-        // console.log("Get data from STOCK_HISTORY table.");
-        // console.log("SQL query: ", strQuery);
-
         // Execute sql
         thisDb.all(strQuery, function(err, row) {
             if (err) {
-                reject({ "error": err });
+                reject({ err: err });
             } else {
-                resolve(row);
+                if (row.length == 0) {
+                    reject({ err: "Can't any record. code=" + code })
+                } else {
+                    resolve(row);
+                }
             }
         });
     });
@@ -174,7 +174,7 @@ StockHistory.prototype.getLimit = function(code, limit, isAscByTime) {
         // Execute sql
         thisDb.all(strQuery, function(err, row) {
             if (err) {
-                reject({ "error": err });
+                reject({ "err": err });
             } else {
                 resolve(row);
             }
@@ -199,7 +199,7 @@ StockHistory.prototype.insert = function(data) {
                 var errMessage = logMsg + " ~> Error!!";
                 console.log(errMessage);
                 console.log("SQL query: ", queryStr.substring(0, 400), "...");
-                reject({ "error": err });
+                reject({ "err": err });
             } else {
                 console.log(logMsg + " ~> Done!!");
                 resolve({ row_num: data.length });
