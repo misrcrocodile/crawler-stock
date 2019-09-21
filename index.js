@@ -1,3 +1,3 @@
 const VND = require("./stocks/Vndirect");
 
-VND.testByCode("FPT");
+VND.initDataForTheFirstTime();

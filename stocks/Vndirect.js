@@ -41,11 +41,12 @@ function getLastStockData(stockCode) {
   var dtToday = new Date();
   var strTo = dtToday.getTime().toString();
   var strFrom = "";
+  var url = "";
   strTo = strTo.substr(0, strTo.length - 3);
   strFrom = strTo - 86400 * 7;
-
-  return fetch(
-    URL_STOCK_HISTORY + stockCode + "&from=" + strFrom + "&to=" + strTo,
+  url = URL_STOCK_HISTORY + stockCode + "&from=" + strFrom + "&to=" + strTo;
+  console.log("Fetching from url: ", url)
+  return fetch(url,
     {
       headers: {
         accept: "application/json, text/plain, */*"
@@ -140,25 +141,18 @@ function calcIndicatorWeight(data) {
 }
 
 // run only once when init project
-function initDataForTheFirstTime1() {
-  getCodeList().then(codeList => {
-    for (var i = 0; i < codeList.length; i++) {
-      getStockHistoryAll(codeList[i]).then(res => {
-        stockHistory.insert(calcIndicatorWeight(res));
-      });
-    }
-  });
-}
-// run only once when init project
 function initDataForTheFirstTime() {
   getCodeList().then(codeList => {
     var allPromise = Promise.map(codeList, getStockHistoryAll, {
       concurrency: 4
     });
     allPromise.then(allValue => {
-      for (var i = 0; i < allValue.length; i++) {
-        stockHistory.insert(calcIndicatorWeight(allValue[i]));
-      }
+
+      var allIndicator = allValue.map(calcIndicatorWeight);
+      var childPromise = Promise.map(allIndicator, stockHistory.insert.bind(stockHistory), {
+        concurrency: 4
+      });
+      childPromise.then();
     });
   });
 }
@@ -214,19 +208,63 @@ function updateAllNewStockData() {
   });
 }
 
+
+function updateAllNewStockData1() {
+  getCodeList().then(codeList => {
+    for (var i = 0; i < codeList.length; i++) {
+      var stockCode = codeList[i];
+      Promise.all([getLastStockData(stockCode), stockHistory.get(stockCode)])
+        .then(res => {
+          var lastData = res[0];
+          var historyData = res[1];
+          var data = stockHistory.convert2DataArray(historyData);
+          var insertData = {};
+
+          // add last data to stockHistory before calculate indicator
+          for (key in data) {
+            if (Array.isArray(data[key])) {
+              data[key].push(0);
+            }
+          }
+
+          data.length += 1;
+          data.time[data.length - 1] = lastData.time[0];
+          data.high[data.length - 1] = lastData.high[0];
+          data.low[data.length - 1] = lastData.low[0];
+          data.open[data.length - 1] = lastData.open[0];
+          data.close[data.length - 1] = lastData.close[0];
+          data.volume[data.length - 1] = lastData.volume[0];
+
+          // calculate indicator
+          data = calcIndicatorWeight(data);
+
+          // create data to save to DB
+          for (key in data) {
+            if (Array.isArray(data[key])) {
+              insertData[key] = [data[key][data[key].length - 1]];
+            } else {
+              insertData[key] = data[key];
+            }
+          }
+
+          // set length to 1
+          insertData.length = 1;
+
+          // save data to db
+          stockHistory.insert(insertData);
+        })
+        .catch(err => {
+          console.log(err);
+        });
+    }
+  });
+}
+
 function testByCode(code) {
   getStockHistoryAll(code).then(res => {
     stockHistory.insert(calcIndicatorWeight(res));
   });
 }
-//initDataForTheFirstTime();
-//updateAllNewStockData();
-
-// getStockList(["BMP", "FPT", "VCB", "HPG", "FRT", "VGI"]).then(res => {
-//     console.log(JSON.stringify(res));
-// });
-
-// getStockList
 
 module.exports = {
   updateAllNewStockData,
