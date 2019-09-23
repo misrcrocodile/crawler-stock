@@ -8,10 +8,11 @@ const StockHistory = require("../models/StockHistory");
 const SQLITE3_PATH = "./stock.db";
 const URL_STOCK_CODE_LIST =
   "https://price-as01.vndirect.com.vn/priceservice/secinfo/snapshot/q=floorCode:10,02,03";
-const URL_STOCK_HISTORY =
+const URL_DAY_HISTORY =
   "https://dchart-api.vndirect.com.vn/dchart/history?resolution=D&symbol="; // parameter resolution, symbol, from, to
 const URL_STOCK_LIST =
   "https://price-fpt-03.vndirect.com.vn/priceservice/secinfo/snapshot/q=codes:";
+const URL_INTRA_HISTORY = "https://finfo-api.vndirect.com.vn/v3/stocks/intraday/history?symbols=FPT&sort=-time&limit=1000&fromDate=2019-09-23&toDate=2019-09-23&fields=symbol,last,lastVol,time";
 
 const db = sqlite3.init(SQLITE3_PATH);
 const stockHistory = new StockHistory(db);
@@ -44,15 +45,13 @@ function getLastStockData(stockCode) {
   var url = "";
   strTo = strTo.substr(0, strTo.length - 3);
   strFrom = strTo - 86400 * 7;
-  url = URL_STOCK_HISTORY + stockCode + "&from=" + strFrom + "&to=" + strTo;
-  console.log("Fetching from url: ", url)
-  return fetch(url,
-    {
-      headers: {
-        accept: "application/json, text/plain, */*"
-      }
+  url = URL_DAY_HISTORY + stockCode + "&from=" + strFrom + "&to=" + strTo;
+  console.log("Fetching from url: ", url);
+  return fetch(url, {
+    headers: {
+      accept: "application/json, text/plain, */*"
     }
-  )
+  })
     .then(res => res.json())
     .then(data => {
       let dataSize = data.t.length;
@@ -60,7 +59,7 @@ function getLastStockData(stockCode) {
       // check if data is not exists
       if (dataSize === 0) {
         return Promise.reject({
-          errMsg: "[getLastStockData] have no record to pull. code=" + stockCode
+          err: "[getLastStockData] have no record to pull. code=" + stockCode
         });
       }
 
@@ -87,6 +86,11 @@ function getLastStockData(stockCode) {
     });
 }
 
+function getLastStockData_WithoutReject(stockCode) {
+  return getLastStockData(stockCode).catch(err => {
+    return err;
+  });
+}
 // get stock data from init day
 function getStockHistoryAll(stockCode) {
   var dtToday = new Date();
@@ -98,7 +102,7 @@ function getStockHistoryAll(stockCode) {
   strFromDay = strFromDay.substr(0, strFromDay.length - 3);
 
   var strUrl =
-    URL_STOCK_HISTORY + stockCode + "&from=" + strFromDay + "&to=" + strToDay;
+    URL_DAY_HISTORY + stockCode + "&from=" + strFromDay + "&to=" + strToDay;
   console.log("Fetching: ", strUrl);
   return fetch(strUrl, {
     headers: {
@@ -147,98 +151,79 @@ function initDataForTheFirstTime() {
       concurrency: 4
     });
     allPromise.then(allValue => {
-
       var allIndicator = allValue.map(calcIndicatorWeight);
-      var childPromise = Promise.map(allIndicator, stockHistory.insert.bind(stockHistory), {
-        concurrency: 4
-      });
+      var childPromise = Promise.map(
+        allIndicator,
+        stockHistory.insert.bind(stockHistory),
+        {
+          concurrency: 4
+        }
+      );
       childPromise.then();
     });
   });
 }
 
+// Inconstruct
 function updateAllNewStockData() {
   getCodeList().then(codeList => {
-    for (var i = 0; i < codeList.length; i++) {
-      var stockCode = codeList[i];
-      Promise.all([getLastStockData(stockCode), stockHistory.get(stockCode)])
-        .then(res => {
-          var lastData = res[0];
-          var historyData = res[1];
-          var data = stockHistory.convert2DataArray(historyData);
-          var insertData = {};
-
-          // add last data to stockHistory before calculate indicator
-          for (key in data) {
-            if (Array.isArray(data[key])) {
-              data[key].push(0);
-            }
-          }
-
-          data.length += 1;
-          data.time[data.length - 1] = lastData.time[0];
-          data.high[data.length - 1] = lastData.high[0];
-          data.low[data.length - 1] = lastData.low[0];
-          data.open[data.length - 1] = lastData.open[0];
-          data.close[data.length - 1] = lastData.close[0];
-          data.volume[data.length - 1] = lastData.volume[0];
-
-          // calculate indicator
-          data = calcIndicatorWeight(data);
-
-          // create data to save to DB
-          for (key in data) {
-            if (Array.isArray(data[key])) {
-              insertData[key] = [data[key][data[key].length - 1]];
-            } else {
-              insertData[key] = data[key];
-            }
-          }
-
-          // set length to 1
-          insertData.length = 1;
-
-          // save data to db
-          stockHistory.insert(insertData);
-        })
-        .catch(err => {
-          console.log(err);
-        });
-    }
+    Promise.map(codeList, getLastStockData, { concurrency: 4 }).then(data => {
+      Promise.map(data, stockHistory.update.bind(stockHistory)).then();
+    });
   });
 }
 
-
-function updateAllNewStockData1() {
+function insertAllNewStockData() {
   getCodeList().then(codeList => {
-    for (var i = 0; i < codeList.length; i++) {
-      var stockCode = codeList[i];
-      Promise.all([getLastStockData(stockCode), stockHistory.get(stockCode)])
-        .then(res => {
-          var lastData = res[0];
-          var historyData = res[1];
-          var data = stockHistory.convert2DataArray(historyData);
+    console.log("Get ", codeList.length, " codes");
+    Promise.all([
+      Promise.map(codeList, getLastStockData_WithoutReject, { concurrency: 4 }),
+      Promise.map(codeList, stockHistory.get_WithoutReject.bind(stockHistory), {
+        concurrency: 4
+      })
+    ])
+      .then(res => {
+        var lastData = res[0];
+        var historyData = res[1];
+        var insertList = [];
+
+        // Checking data
+        if (lastData.length !== historyData.length) {
+          return Promise.reject({
+            error: "lastData.length !== historyData.length"
+          });
+        }
+
+        // Looping each stock item
+        for (var i = 0; i < historyData.length; i++) {
+          if (lastData[i].err || historyData[i].err) {
+            console.error("error ", lastData[i].err, historyData[i].err);
+            continue;
+          }
+
+          var data = stockHistory.convert2DataArray(historyData[i]);
           var insertData = {};
 
-          // add last data to stockHistory before calculate indicator
+          // Adding last data to stockHistory before calculate indicator
           for (key in data) {
             if (Array.isArray(data[key])) {
               data[key].push(0);
             }
           }
 
+          // Adding new item to the end of the list
           data.length += 1;
-          data.time[data.length - 1] = lastData.time[0];
-          data.high[data.length - 1] = lastData.high[0];
-          data.low[data.length - 1] = lastData.low[0];
-          data.open[data.length - 1] = lastData.open[0];
-          data.close[data.length - 1] = lastData.close[0];
-          data.volume[data.length - 1] = lastData.volume[0];
+          data.time[data.length - 1] = lastData[i].time[0];
+          data.high[data.length - 1] = lastData[i].high[0];
+          data.low[data.length - 1] = lastData[i].low[0];
+          data.open[data.length - 1] = lastData[i].open[0];
+          data.close[data.length - 1] = lastData[i].close[0];
+          data.volume[data.length - 1] = lastData[i].volume[0];
 
-          // calculate indicator
+          // Calculating indicator
           data = calcIndicatorWeight(data);
 
-          // create data to save to DB
+          // Creating data to save to DB
           for (key in data) {
             if (Array.isArray(data[key])) {
               insertData[key] = [data[key][data[key].length - 1]];
@@ -247,31 +232,33 @@ function updateAllNewStockData1() {
             }
           }
 
-          // set length to 1
+          // Set length to 1
           insertData.length = 1;
 
-          // save data to db
-          stockHistory.insert(insertData);
-        })
-        .catch(err => {
-          console.log(err);
-        });
-    }
-  });
-}
+          // Push new data to insert list
+          insertList.push(insertData);
+        }
 
-function testByCode(code) {
-  getStockHistoryAll(code).then(res => {
-    stockHistory.insert(calcIndicatorWeight(res));
+        // Save data to db
+        console.log("Update ", insertList.length, " codes");
+
+        // Insert list data
+        Promise.map(insertList, stockHistory.insert.bind(stockHistory), {
+          concurrency: 4
+        }).then();
+      })
+      .catch(err => {
+        console.error(err);
+      });
   });
 }
 
 module.exports = {
-  updateAllNewStockData,
   initDataForTheFirstTime,
+  insertAllNewStockData,
+  updateAllNewStockData,
   calcIndicatorWeight,
   getStockHistoryAll,
   getLastStockData,
-  getCodeList,
-  testByCode
+  getCodeList
 };

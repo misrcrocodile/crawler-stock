@@ -58,6 +58,16 @@ function convert2DataObj(data) {
   return retObj;
 }
 
+function convert2DataObjFlat(data) {
+  let retObj = convert2DataObj(data);
+  for(key in retObj) {
+    if (Array.isArray(retObj[key])) {
+      retObj[key] = retObj[key][retObj[key].length - 1];
+    }
+  }
+  return retObj;
+}
+
 // create query string to init STOCK_HISTORY table
 function createQueryString_CreateTable() {
   let queryStr =
@@ -113,6 +123,20 @@ function createQueryString_InsertData(data) {
   return queryStr;
 }
 
+function createQueryString_UpdateData(data) {
+  let queryStr = "UPDATE STOCK_HISTORY SET ";
+  for (var i = 0; i < PROPERTY_LIST.length; i++) {
+    queryStr += PROPERTY_LIST[i] + " = '" + data[PROPERTY_LIST[i]] + "', ";
+  }
+  queryStr = queryStr.substring(0, queryStr.length - 2);
+  queryStr += " WHERE time = " + data.time + " AND code = '" + data.code + "'";
+  return queryStr;
+}
+
+// UPDATE table_name
+// SET column1 = value1, column2 = value2...., columnN = valueN
+// WHERE [condition];
+
 // Create table if it not exists
 function createStockHistoryTable(pDb) {
   let queryStr = createQueryString_CreateTable();
@@ -150,6 +174,11 @@ StockHistory.prototype.get = function(code) {
     });
   });
 };
+StockHistory.prototype.get_WithoutReject = function(code) {
+  return this.get(code).catch(err => {
+    return err;
+  });
+};
 
 StockHistory.prototype.getLimit = function(code, limit, isAscByTime) {
   let thisDb = this.db;
@@ -173,6 +202,32 @@ StockHistory.prototype.getLimit = function(code, limit, isAscByTime) {
         reject({ err: err });
       } else {
         resolve(row);
+      }
+    });
+  });
+};
+
+StockHistory.prototype.update = function(data) {
+  let thisDb = this.db;
+  let queryStr;
+
+  // convert crawl data to db data
+  data = convert2DataObjFlat(data);
+  queryStr = createQueryString_UpdateData(data);
+  console.log(queryStr);
+  // Execute sql
+  return new Promise(function(resolve, reject) {
+    thisDb.run(queryStr, function(err, _res) {
+      var logMsg =
+        "Update " + data.code + " into Stock_HISTORY: size=" + data.length;
+      if (err) {
+        var errMessage = logMsg + " ~> Error!!";
+        console.log(errMessage);
+        console.log("SQL query: ", queryStr.substring(0, 400), "...");
+        reject({ err: err });
+      } else {
+        console.log(logMsg + " ~> Done!!");
+        resolve({ row_num: data.length });
       }
     });
   });
