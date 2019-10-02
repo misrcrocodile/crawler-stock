@@ -19,7 +19,9 @@ const URL_INTRA_HISTORY =
 
 // delete file named SQLITE3_PATH
 fs.unlink(SQLITE3_PATH, function(err) {
-  if (err) throw err;
+  if (err) {
+    console.log("Have no file to delete.")
+  }
   // if no error, file has been deleted successfully
   console.log("File deleted!");
 });
