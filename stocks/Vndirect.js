@@ -18,11 +18,11 @@ const URL_INTRA_HISTORY =
   "https://finfo-api.vndirect.com.vn/v3/stocks/intraday/history?symbols=FPT&sort=-time&limit=1000&fromDate=2019-09-23&toDate=2019-09-23&fields=symbol,last,lastVol,time";
 
 // delete file named SQLITE3_PATH
-// fs.unlink(SQLITE3_PATH, function(err) {
-//   if (err) throw err;
-//   // if no error, file has been deleted successfully
-//   console.log("File deleted!");
-// });
+fs.unlink(SQLITE3_PATH, function(err) {
+  if (err) throw err;
+  // if no error, file has been deleted successfully
+  console.log("File deleted!");
+});
 
 const db = sqlite3.init(SQLITE3_PATH);
 const stockHistory = new StockHistory(db);
@@ -331,9 +331,9 @@ function updateDashboard() {
 }
 
 function runEveryday() {
-  //return initDataForTheFirstTime().then(()=> {
+  return initDataForTheFirstTime().then(()=> {
     return updateDashboard();
-  //})
+  });
 }
 module.exports = {
   initDataForTheFirstTime,
