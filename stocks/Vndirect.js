@@ -303,8 +303,10 @@ function updateDashboard() {
     }
     var downList = [];
     var upList = [];
+    var realtimeList = [];
     var toDayList = tempData[header[header.length - 1]];
     for(var i = 0; i < toDayList.length;i++) {
+      realtimeList.push(toDayList[i].code);
       if(toDayList[i].macd_histogram >=0) {
         upList.push(toDayList[i].code);
       }else {
@@ -324,9 +326,12 @@ function updateDashboard() {
       upList: upList.join(","),
       downList: downList.join(",")
     };
-    var str = JSON.stringify(returnObj)
-    console.log(str);
-    return util.saveNote("dashboarddata", str);
+    
+    return util.saveNote("dashboarddata", JSON.stringify(returnObj)).
+    then(() =>{
+      return util.saveNote("stockdata", realtimeList.join(","));
+    });
+
   });
 }
 
