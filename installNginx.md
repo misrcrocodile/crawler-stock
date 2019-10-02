@@ -77,27 +77,35 @@ service nginx status
 
 
 
+
+Update the repository and then install nginx using the apt command below.
 ```
-# Update the repository and then install nginx using the apt command below.
 sudo apt update
 sudo apt install nginx -y
+```
 
-# Add the SSH service port to the firewall configuration using the ufw command and then enable the UFW firewall service.
+Add the SSH service port to the firewall configuration using the ufw command and then enable the UFW firewall service.
+```
 ufw allow ssh
 ufw enable
+```
 
-# Now add the HTTP and HTTPS services.
+Now add the HTTP and HTTPS services.
+```
 ufw allow http
 ufw allow https
 
 # The SSH, HTTP, and HTTPS service ports have been added to the UFW Firewall service list, check it's using the command below.
 ufw status
+```
 
-# Install the letsencrypt packages using the apt command below.
+Install the letsencrypt packages using the apt command below.
+```
 sudo apt install letsencrypt -y
+```
 
-
-# Go to the '/etc/nginx' configuration directory and create new configuration file 'cerbot.conf' under the 'snippets' directory.
+Go to the '/etc/nginx' configuration directory and create new configuration file 'cerbot.conf' under the 'snippets' directory.
+```
 cd /etc/nginx/
 vim snippets/certbot.conf
 
@@ -245,4 +253,3 @@ systemctl restart nginx
 # The new virtual host with the HTTPS enabled and an additional SSL configuration has been created.
 # Check using the netstat command and you will get the HTTPS port 443 on the list.
 netstat -plntu
-```

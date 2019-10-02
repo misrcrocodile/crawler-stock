@@ -60,7 +60,7 @@ function convert2DataObj(data) {
 
 function convert2DataObjFlat(data) {
   let retObj = convert2DataObj(data);
-  for(key in retObj) {
+  for (key in retObj) {
     if (Array.isArray(retObj[key])) {
       retObj[key] = retObj[key][retObj[key].length - 1];
     }
@@ -154,6 +154,27 @@ function createStockHistoryTable(pDb) {
     }
   });
 }
+
+StockHistory.prototype.deleteAll = function() {
+  let thisDb = this.db;
+
+  return new Promise(function(resolve, reject) {
+    var strQuery = "DELETE FROM STOCK_HISTORY;";
+
+    // Execute sql
+    thisDb.all(strQuery, function(err, row) {
+      if (err) {
+        reject({ err: err });
+      } else {
+        if (row.length == 0) {
+          reject({ err: "Can't delete any record." });
+        } else {
+          resolve(row);
+        }
+      }
+    });
+  });
+};
 
 StockHistory.prototype.get = function(code) {
   let thisDb = this.db;
@@ -259,6 +280,35 @@ StockHistory.prototype.insert = function(data) {
   });
 };
 
+StockHistory.prototype.getAnalysisMACD = function(limitTime) {
+  var thisDb = this.db;
+  var strQuery =
+    "select code, time, open, macd_histogram, volume,(close - open) as grow " +
+    "from stock_history " +
+    "where open > 15 " +
+    "and macd_histogram > -2 " +
+    "and volume > 500000 " +
+    "and time >= (select min(mintime) from (select distinct time as mintime from stock_history order by time desc limit " +
+    limitTime +
+    ")) " +
+    "order by time,macd_histogram desc ";
+    console.log(strQuery);
+    // Execute sql
+    return new Promise(function(resolve, reject) {
+      thisDb.all(strQuery, function(err, row) {
+      if (err) {
+        reject({ err: err });
+      } else {
+        if (row.length == 0) {
+          reject({ err: "Can't any record. code=" + code });
+        } else {
+          resolve(row);
+        }
+      }
+    });
+  });
+};
+
 StockHistory.prototype.convert2DataObj = function(data) {
   return convert2DataObj(data);
 };
@@ -266,4 +316,5 @@ StockHistory.prototype.convert2DataObj = function(data) {
 StockHistory.prototype.convert2DataArray = function(data) {
   return convert2DataArray(data);
 };
+
 module.exports = StockHistory;

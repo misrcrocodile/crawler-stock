@@ -1,9 +1,11 @@
 const fetch = require("node-fetch");
 const Promise = require("bluebird");
+const fs = require("fs");
 
 const sqlite3 = require("../utils/adapter.js");
 const Indicator = require("./../utils/Indicator");
 const StockHistory = require("../models/StockHistory");
+const util = require("../utils/Util");
 
 const SQLITE3_PATH = "./stock.db";
 const URL_STOCK_CODE_LIST =
@@ -12,12 +14,20 @@ const URL_DAY_HISTORY =
   "https://dchart-api.vndirect.com.vn/dchart/history?resolution=D&symbol="; // parameter resolution, symbol, from, to
 const URL_STOCK_LIST =
   "https://price-fpt-03.vndirect.com.vn/priceservice/secinfo/snapshot/q=codes:";
-const URL_INTRA_HISTORY = "https://finfo-api.vndirect.com.vn/v3/stocks/intraday/history?symbols=FPT&sort=-time&limit=1000&fromDate=2019-09-23&toDate=2019-09-23&fields=symbol,last,lastVol,time";
+const URL_INTRA_HISTORY =
+  "https://finfo-api.vndirect.com.vn/v3/stocks/intraday/history?symbols=FPT&sort=-time&limit=1000&fromDate=2019-09-23&toDate=2019-09-23&fields=symbol,last,lastVol,time";
+
+// delete file named SQLITE3_PATH
+// fs.unlink(SQLITE3_PATH, function(err) {
+//   if (err) throw err;
+//   // if no error, file has been deleted successfully
+//   console.log("File deleted!");
+// });
 
 const db = sqlite3.init(SQLITE3_PATH);
 const stockHistory = new StockHistory(db);
-// get all stock code list of the whole market
 
+// get all stock code list of the whole market
 function getCodeList() {
   var codeList = [];
 
@@ -91,6 +101,7 @@ function getLastStockData_WithoutReject(stockCode) {
     return err;
   });
 }
+
 // get stock data from init day
 function getStockHistoryAll(stockCode) {
   var dtToday = new Date();
@@ -146,11 +157,11 @@ function calcIndicatorWeight(data) {
 
 // run only once when init project
 function initDataForTheFirstTime() {
-  getCodeList().then(codeList => {
+  return getCodeList().then(codeList => {
     var allPromise = Promise.map(codeList, getStockHistoryAll, {
       concurrency: 4
     });
-    allPromise.then(allValue => {
+    return allPromise.then(allValue => {
       var allIndicator = allValue.map(calcIndicatorWeight);
       var childPromise = Promise.map(
         allIndicator,
@@ -159,7 +170,7 @@ function initDataForTheFirstTime() {
           concurrency: 4
         }
       );
-      childPromise.then();
+      return childPromise.then();
     });
   });
 }
@@ -253,6 +264,77 @@ function insertAllNewStockData() {
   });
 }
 
+function updateDashboard() {
+  return stockHistory.getAnalysisMACD(30).then(row => {
+    var tempData = {};
+    var header = [];
+    var dataContent = [];
+    var maxLen = 0;
+
+    for (var i = 0; i < row.length; i++) {
+      if (!Array.isArray(tempData[row[i]["time"]])) {
+        tempData[row[i]["time"]] = [];
+      }
+      tempData[row[i]["time"]].push(row[i]);
+    }
+
+    // create table header
+    for (var key in tempData) {
+      header.push(key);
+      maxLen = tempData[key].length > maxLen ? tempData[key].length : maxLen;
+    }
+
+    // create data blank content;
+    for (var i = 0; i < maxLen; i++) {
+      var icontent = [];
+      for (var j = 0; j < header.length; j++) {
+        icontent.push("");
+      }
+      dataContent.push(icontent);
+    }
+
+    for (var i = 0; i < maxLen; i++) {
+      for (var j = 0; j < header.length; j++) {
+        if (tempData[header[j]][i] != undefined) {
+          dataContent[i][j] = {code:tempData[header[j]][i].code,
+            macd:tempData[header[j]][i].macd_histogram};
+        }
+      }
+    }
+    var downList = [];
+    var upList = [];
+    var toDayList = tempData[header[header.length - 1]];
+    for(var i = 0; i < toDayList.length;i++) {
+      if(toDayList[i].macd_histogram >=0) {
+        upList.push(toDayList[i].code);
+      }else {
+        downList.push(toDayList[i].code);
+      }
+    }
+    
+    for (var i = 0; i < header.length; i++) {
+      var tempDay = new Date(parseInt(header[i] + "000"));
+      header[i] = tempDay.getDate();
+    }
+
+    
+    var returnObj = {
+      header,
+      table: dataContent,
+      upList: upList.join(","),
+      downList: downList.join(",")
+    };
+    var str = JSON.stringify(returnObj)
+    console.log(str);
+    return util.saveNote("dashboarddata", str);
+  });
+}
+
+function runEveryday() {
+  //return initDataForTheFirstTime().then(()=> {
+    return updateDashboard();
+  //})
+}
 module.exports = {
   initDataForTheFirstTime,
   insertAllNewStockData,
@@ -260,5 +342,6 @@ module.exports = {
   calcIndicatorWeight,
   getStockHistoryAll,
   getLastStockData,
-  getCodeList
+  getCodeList,
+  runEveryday
 };
