@@ -1,13 +1,11 @@
-const fetch = require("node-fetch");
 const Promise = require("bluebird");
-const fs = require("fs");
+const moment = require("moment");
 
 const sqlite3 = require("../utils/adapter.js");
 const Indicator = require("./../utils/Indicator");
 const StockHistory = require("../models/StockHistory");
-const util = require("../utils/Util");
+const Util = require("../utils/Util");
 
-const SQLITE3_PATH = "./stock.db";
 const URL_STOCK_CODE_LIST =
   "https://price-as01.vndirect.com.vn/priceservice/secinfo/snapshot/q=floorCode:10,02,03";
 const URL_DAY_HISTORY =
@@ -17,85 +15,93 @@ const URL_STOCK_LIST =
 const URL_INTRA_HISTORY =
   "https://finfo-api.vndirect.com.vn/v3/stocks/intraday/history?symbols=FPT&sort=-time&limit=1000&fromDate=2019-09-23&toDate=2019-09-23&fields=symbol,last,lastVol,time";
 
-// delete file named SQLITE3_PATH
-fs.unlink(SQLITE3_PATH, function(err) {
-  if (err) {
-    console.log("Have no file to delete.")
-  }
-  // if no error, file has been deleted successfully
-  console.log("File deleted!");
-});
+const CONCURRENCY = 10;
+const IS_DELETE_DB = true;
+const SQLITE3_PATH = "./stock.db";
 
+// delete file named SQLITE3_PATH
+if (IS_DELETE_DB) {
+  const fs = require("fs");
+
+  fs.unlink(SQLITE3_PATH, function(err) {
+    if (err) {
+      console.log("Have no file to delete.");
+    }
+    // if no error, file has been deleted successfully
+    console.log("File deleted!");
+  });
+}
+
+// Init sqlite
 const db = sqlite3.init(SQLITE3_PATH);
+
+// Init stockHistory
 const stockHistory = new StockHistory(db);
 
-// get all stock code list of the whole market
-function getCodeList() {
+// Get all stock code list of the whole market
+async function getListCode() {
   var codeList = [];
 
-  return fetch(URL_STOCK_CODE_LIST, {
-    headers: {
-      accept: "application/json, text/plain, */*"
+  // Getting data
+  var data = await Util.fetchGet(URL_STOCK_CODE_LIST);
+
+  // Executing data
+  for (var key in data) {
+    for (var i = 0; i < data[key].length; i++) {
+      codeList.push(data[key][i].split("|")[3]);
     }
-  })
-    .then(res => res.json())
-    .then(data => {
-      for (var key in data) {
-        for (var i = 0; i < data[key].length; i++) {
-          codeList.push(data[key][i].split("|")[3]);
-        }
-      }
-      return codeList;
-    });
+  }
+
+  return codeList;
 }
 
 // get the newest stock data
-function getLastStockData(stockCode) {
-  var dtToday = new Date();
-  var strTo = dtToday.getTime().toString();
-  var strFrom = "";
-  var url = "";
+async function getLastStockData(stockCode) {
+  // Today string
+  var strTo = moment()
+    .unix()
+    .toString();
   strTo = strTo.substr(0, strTo.length - 3);
+
+  // Fromday string
+  var strFrom = "";
   strFrom = strTo - 86400 * 7;
-  url = URL_DAY_HISTORY + stockCode + "&from=" + strFrom + "&to=" + strTo;
+
+  // Creating url
+  var url = URL_DAY_HISTORY + stockCode + "&from=" + strFrom + "&to=" + strTo;
   console.log("Fetching from url: ", url);
-  return fetch(url, {
-    headers: {
-      accept: "application/json, text/plain, */*"
-    }
-  })
-    .then(res => res.json())
-    .then(data => {
-      let dataSize = data.t.length;
 
-      // check if data is not exists
-      if (dataSize === 0) {
-        return Promise.reject({
-          err: "[getLastStockData] have no record to pull. code=" + stockCode
-        });
-      }
+  // Getting data
+  var data = await Util.fetchGet(url);
+  var dataSize = data.t.length;
 
-      // create data
-      let retObj = {
-        code: stockCode,
-        time: [],
-        high: [],
-        low: [],
-        open: [],
-        close: [],
-        volume: [],
-        length: 1
-      };
-
-      retObj.time.push(data.t[dataSize - 1]);
-      retObj.high.push(data.h[dataSize - 1]);
-      retObj.low.push(data.l[dataSize - 1]);
-      retObj.open.push(data.o[dataSize - 1]);
-      retObj.close.push(data.c[dataSize - 1]);
-      retObj.volume.push(data.v[dataSize - 1]);
-
-      return retObj;
+  // Checkking if data is not exists
+  if (dataSize === 0) {
+    return Promise.reject({
+      err: "[getLastStockData] have no record to pull. code=" + stockCode
     });
+  }
+
+  // Creatting data
+  let retObj = {
+    code: stockCode,
+    time: [],
+    high: [],
+    low: [],
+    open: [],
+    close: [],
+    volume: [],
+    length: 1
+  };
+
+  retObj.time.push(data.t[dataSize - 1]);
+  retObj.high.push(data.h[dataSize - 1]);
+  retObj.low.push(data.l[dataSize - 1]);
+  retObj.open.push(data.o[dataSize - 1]);
+  retObj.close.push(data.c[dataSize - 1]);
+  retObj.volume.push(data.v[dataSize - 1]);
+
+  return retObj;
 }
 
 function getLastStockData_WithoutReject(stockCode) {
@@ -105,42 +111,40 @@ function getLastStockData_WithoutReject(stockCode) {
 }
 
 // get stock data from init day
-function getStockHistoryAll(stockCode) {
-  var dtToday = new Date();
-  var dtFromDay = new Date("2000/1/1");
-  var strToDay = dtToday.getTime().toString();
-  var strFromDay = dtFromDay.getTime().toString();
+async function getAll(stockCode) {
+  var strToDay = moment()
+    .unix()
+    .toString();
+  var strFromDay = moment("1-1-2000", "MM-DD-YYYY")
+    .unix()
+    .toString();
 
-  strToDay = strToDay.substr(0, strToDay.length - 3);
-  strFromDay = strFromDay.substr(0, strFromDay.length - 3);
+  strToDay = strToDay.substr(0, strToDay.length - 3) + "000";
+  strFromDay = strFromDay.substr(0, strFromDay.length - 3) + "000";
 
   var strUrl =
     URL_DAY_HISTORY + stockCode + "&from=" + strFromDay + "&to=" + strToDay;
-  console.log("Fetching: ", strUrl);
-  return fetch(strUrl, {
-    headers: {
-      accept: "application/json, text/plain, */*"
-    }
-  })
-    .then(res => res.json())
-    .then(data => {
-      var retObj = {};
 
-      retObj.code = stockCode;
-      retObj.time = data.t;
-      retObj.high = data.h;
-      retObj.low = data.l;
-      retObj.open = data.o;
-      retObj.close = data.c;
-      retObj.volume = data.v;
-      retObj.length = retObj.time.length;
+  // Fetching data
+  var data = await Util.fetchGet(strUrl);
+  console.log(`Fetching history: code = ${stockCode} ~> Done!`);
 
-      return retObj;
-    });
+  var retObj = {};
+
+  retObj.code = stockCode;
+  retObj.time = data.t;
+  retObj.high = data.h;
+  retObj.low = data.l;
+  retObj.open = data.o;
+  retObj.close = data.c;
+  retObj.volume = data.v;
+  retObj.length = retObj.time.length;
+
+  return retObj;
 }
 
 // calculate indicator
-function calcIndicatorWeight(data) {
+function calcIndicator(data) {
   let macd = Indicator.calculateMACD(data.close);
 
   data.ma9 = Indicator.calculateMA(data.close, 9);
@@ -158,197 +162,200 @@ function calcIndicatorWeight(data) {
 }
 
 // run only once when init project
-function initDataForTheFirstTime() {
-  return getCodeList().then(codeList => {
-    var allPromise = Promise.map(codeList, getStockHistoryAll, {
-      concurrency: 4
-    });
-    return allPromise.then(allValue => {
-      var allIndicator = allValue.map(calcIndicatorWeight);
-      var childPromise = Promise.map(
-        allIndicator,
-        stockHistory.insert.bind(stockHistory),
-        {
-          concurrency: 4
-        }
-      );
-      return childPromise.then();
-    });
+async function initDatabase() {
+  var codeList = await getListCode();
+
+  // Creatting promise
+  var allPromise = Promise.map(codeList, getAll, {
+    concurrency: CONCURRENCY
+  });
+
+  // Run promise
+  return allPromise.then(allValue => {
+    var allIndicator = allValue.map(calcIndicator);
+    var childPromise = Promise.map(
+      allIndicator,
+      stockHistory.insert.bind(stockHistory),
+      {
+        concurrency: CONCURRENCY
+      }
+    );
+    return childPromise.then();
   });
 }
 
 // Inconstruct
-function updateAllNewStockData() {
-  getCodeList().then(codeList => {
-    Promise.map(codeList, getLastStockData, { concurrency: 4 }).then(data => {
-      Promise.map(data, stockHistory.update.bind(stockHistory)).then();
+async function updateAll() {
+  var codeList = await getListCode();
+  var lastStockdata = await Promise.map(codeList, getLastStockData, {
+    concurrency: CONCURRENCY
+  });
+
+  return Promise.map(
+    lastStockdata,
+    stockHistory.update.bind(stockHistory)
+  ).then();
+}
+
+async function insertAll() {
+  // Getting code list
+  var codeList = await getListCode();
+
+  // Getting lastest history data
+  var returnData = await Promise.all([
+    Promise.map(codeList, getLastStockData_WithoutReject, {
+      concurrency: CONCURRENCY
+    }),
+    Promise.map(codeList, stockHistory.get_WithoutReject.bind(stockHistory), {
+      concurrency: CONCURRENCY
+    })
+  ]);
+
+  var lastData = returnData[0];
+  var historyData = returnData[1];
+  var insertList = [];
+
+  // Checking data
+  if (lastData.length !== historyData.length) {
+    return Promise.reject({
+      error: "lastData.length !== historyData.length"
     });
+  }
+
+  // Looping each stock item
+  for (var i = 0; i < historyData.length; i++) {
+    if (lastData[i].err || historyData[i].err) {
+      console.error("error ", lastData[i].err, historyData[i].err);
+      continue;
+    }
+
+    var data = stockHistory.convert2DataArray(historyData[i]);
+    var insertData = {};
+
+    // Adding last data to stockHistory before calculate indicator
+    for (key in data) {
+      if (Array.isArray(data[key])) {
+        data[key].push(0);
+      }
+    }
+
+    // Adding new item to the end of the list
+    data.length += 1;
+    data.time[data.length - 1] = lastData[i].time[0];
+    data.high[data.length - 1] = lastData[i].high[0];
+    data.low[data.length - 1] = lastData[i].low[0];
+    data.open[data.length - 1] = lastData[i].open[0];
+    data.close[data.length - 1] = lastData[i].close[0];
+    data.volume[data.length - 1] = lastData[i].volume[0];
+
+    // Calculating indicator
+    data = calcIndicator(data);
+
+    // Creating data to save to DB
+    for (key in data) {
+      if (Array.isArray(data[key])) {
+        insertData[key] = [data[key][data[key].length - 1]];
+      } else {
+        insertData[key] = data[key];
+      }
+    }
+
+    // Set length to 1
+    insertData.length = 1;
+
+    // Push new data to insert list
+    insertList.push(insertData);
+  }
+
+  // Save data to db
+  console.log("Update ", insertList.length, " codes");
+
+  // Insert list data
+  return Promise.map(insertList, stockHistory.insert.bind(stockHistory), {
+    concurrency: CONCURRENCY
   });
 }
 
-function insertAllNewStockData() {
-  getCodeList().then(codeList => {
-    console.log("Get ", codeList.length, " codes");
-    Promise.all([
-      Promise.map(codeList, getLastStockData_WithoutReject, { concurrency: 4 }),
-      Promise.map(codeList, stockHistory.get_WithoutReject.bind(stockHistory), {
-        concurrency: 4
-      })
-    ])
-      .then(res => {
-        var lastData = res[0];
-        var historyData = res[1];
-        var insertList = [];
+async function updateDashboard() {
+  var row = await stockHistory.getAnalysisMACD(30);
+  var tempData = {};
+  var header = [];
+  var dataContent = [];
+  var maxLen = 0;
 
-        // Checking data
-        if (lastData.length !== historyData.length) {
-          return Promise.reject({
-            error: "lastData.length !== historyData.length"
-          });
-        }
+  for (var i = 0; i < row.length; i++) {
+    if (!Array.isArray(tempData[row[i]["time"]])) {
+      tempData[row[i]["time"]] = [];
+    }
+    tempData[row[i]["time"]].push(row[i]);
+  }
 
-        // Looping each stock item
-        for (var i = 0; i < historyData.length; i++) {
-          if (lastData[i].err || historyData[i].err) {
-            console.error("error ", lastData[i].err, historyData[i].err);
-            continue;
-          }
+  // create table header
+  for (var key in tempData) {
+    header.push(key);
+    maxLen = tempData[key].length > maxLen ? tempData[key].length : maxLen;
+  }
 
-          var data = stockHistory.convert2DataArray(historyData[i]);
-          var insertData = {};
+  // create data blank content;
+  for (var i = 0; i < maxLen; i++) {
+    var icontent = [];
+    for (var j = 0; j < header.length; j++) {
+      icontent.push("");
+    }
+    dataContent.push(icontent);
+  }
 
-          // Adding last data to stockHistory before calculate indicator
-          for (key in data) {
-            if (Array.isArray(data[key])) {
-              data[key].push(0);
-            }
-          }
+  for (var i = 0; i < maxLen; i++) {
+    for (var j = 0; j < header.length; j++) {
+      if (tempData[header[j]][i] != undefined) {
+        dataContent[i][j] = {
+          code: tempData[header[j]][i].code,
+          macd: tempData[header[j]][i].macd_histogram
+        };
+      }
+    }
+  }
+  var downList = [];
+  var upList = [];
+  var realtimeList = [];
+  var toDayList = tempData[header[header.length - 1]];
+  for (var i = 0; i < toDayList.length; i++) {
+    realtimeList.push(toDayList[i].code);
+    if (toDayList[i].macd_histogram >= 0) {
+      upList.push(toDayList[i].code);
+    } else {
+      downList.push(toDayList[i].code);
+    }
+  }
 
-          // Adding new item to the end of the list
-          data.length += 1;
-          data.time[data.length - 1] = lastData[i].time[0];
-          data.high[data.length - 1] = lastData[i].high[0];
-          data.low[data.length - 1] = lastData[i].low[0];
-          data.open[data.length - 1] = lastData[i].open[0];
-          data.close[data.length - 1] = lastData[i].close[0];
-          data.volume[data.length - 1] = lastData[i].volume[0];
+  for (var i = 0; i < header.length; i++) {
+    var tempDay = new Date(parseInt(header[i] + "000"));
+    header[i] = tempDay.getDate();
+  }
 
-          // Calculating indicator
-          data = calcIndicatorWeight(data);
+  var returnObj = {
+    header,
+    table: dataContent,
+    upList: upList.join(","),
+    downList: downList.join(",")
+  };
 
-          // Creating data to save to DB
-          for (key in data) {
-            if (Array.isArray(data[key])) {
-              insertData[key] = [data[key][data[key].length - 1]];
-            } else {
-              insertData[key] = data[key];
-            }
-          }
-
-          // Set length to 1
-          insertData.length = 1;
-
-          // Push new data to insert list
-          insertList.push(insertData);
-        }
-
-        // Save data to db
-        console.log("Update ", insertList.length, " codes");
-
-        // Insert list data
-        Promise.map(insertList, stockHistory.insert.bind(stockHistory), {
-          concurrency: 4
-        }).then();
-      })
-      .catch(err => {
-        console.error(err);
-      });
-  });
+  await Util.saveNote("dashboarddata", JSON.stringify(returnObj));
+  return Util.saveNote("stockdata", realtimeList.join(","));
 }
 
-function updateDashboard() {
-  return stockHistory.getAnalysisMACD(30).then(row => {
-    var tempData = {};
-    var header = [];
-    var dataContent = [];
-    var maxLen = 0;
-
-    for (var i = 0; i < row.length; i++) {
-      if (!Array.isArray(tempData[row[i]["time"]])) {
-        tempData[row[i]["time"]] = [];
-      }
-      tempData[row[i]["time"]].push(row[i]);
-    }
-
-    // create table header
-    for (var key in tempData) {
-      header.push(key);
-      maxLen = tempData[key].length > maxLen ? tempData[key].length : maxLen;
-    }
-
-    // create data blank content;
-    for (var i = 0; i < maxLen; i++) {
-      var icontent = [];
-      for (var j = 0; j < header.length; j++) {
-        icontent.push("");
-      }
-      dataContent.push(icontent);
-    }
-
-    for (var i = 0; i < maxLen; i++) {
-      for (var j = 0; j < header.length; j++) {
-        if (tempData[header[j]][i] != undefined) {
-          dataContent[i][j] = {code:tempData[header[j]][i].code,
-            macd:tempData[header[j]][i].macd_histogram};
-        }
-      }
-    }
-    var downList = [];
-    var upList = [];
-    var realtimeList = [];
-    var toDayList = tempData[header[header.length - 1]];
-    for(var i = 0; i < toDayList.length;i++) {
-      realtimeList.push(toDayList[i].code);
-      if(toDayList[i].macd_histogram >=0) {
-        upList.push(toDayList[i].code);
-      }else {
-        downList.push(toDayList[i].code);
-      }
-    }
-    
-    for (var i = 0; i < header.length; i++) {
-      var tempDay = new Date(parseInt(header[i] + "000"));
-      header[i] = tempDay.getDate();
-    }
-
-    
-    var returnObj = {
-      header,
-      table: dataContent,
-      upList: upList.join(","),
-      downList: downList.join(",")
-    };
-    
-    return util.saveNote("dashboarddata", JSON.stringify(returnObj)).
-    then(() =>{
-      return util.saveNote("stockdata", realtimeList.join(","));
-    });
-
-  });
+async function runEveryday() {
+  await initDatabase();
+  return updateDashboard();
 }
 
-function runEveryday() {
-  return initDataForTheFirstTime().then(()=> {
-    return updateDashboard();
-  });
-}
 module.exports = {
-  initDataForTheFirstTime,
-  insertAllNewStockData,
-  updateAllNewStockData,
-  calcIndicatorWeight,
-  getStockHistoryAll,
-  getLastStockData,
-  getCodeList,
-  runEveryday
+  initDatabase, // Run for the first time init project
+  insertAll, // insert all stock
+  updateAll, // update all stock
+  calcIndicator, // calcIndicator
+  getAll, // get stock data from beginning
+  getLastStockData, // Fetch newest data
+  getListCode, // Get all code list in whole maket
+  runEveryday // run Everyday job pull data from server and analysis
 };

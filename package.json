@@ -29,6 +29,7 @@
     "crawler": "^1.2.1",
     "express": "^4.17.1",
     "http": "0.0.0",
+    "moment": "^2.24.0",
     "node-fetch": "^2.6.0",
     "sqlite3": "^4.1.0",
     "technicalindicators": "^2.0.9",
