@@ -31,6 +31,7 @@
     "http": "0.0.0",
     "moment": "^2.24.0",
     "node-fetch": "^2.6.0",
+    "node-schedule": "^1.3.2",
     "sqlite3": "^4.1.0",
     "technicalindicators": "^2.0.9",
     "zlib": "^1.0.5"

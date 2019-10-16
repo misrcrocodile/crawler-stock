@@ -2,12 +2,6 @@ var StockHistory = function(pDb) {
   this.db = pDb;
   createStockHistoryTable(pDb);
 };
-// var StockHistory = function(pDb, isCreateDb) {
-//     this.db = pDb;
-//     if (isCreateDb) {
-//         createStockHistoryTable(pDb);
-//     }
-// }
 
 const PROPERTY_LIST = [
   "high",
@@ -125,11 +119,13 @@ function createQueryString_InsertData(data) {
 
 function createQueryString_UpdateData(data) {
   let queryStr = "UPDATE STOCK_HISTORY SET ";
+
   for (var i = 0; i < PROPERTY_LIST.length; i++) {
-    queryStr += PROPERTY_LIST[i] + " = '" + data[PROPERTY_LIST[i]] + "', ";
+    queryStr += `${PROPERTY_LIST[i]} = "${data[PROPERTY_LIST[i]]}", `;
   }
+
   queryStr = queryStr.substring(0, queryStr.length - 2);
-  queryStr += " WHERE time = " + data.time + " AND code = '" + data.code + "'";
+  queryStr += ` WHERE time = ${data.time} AND code = "${data.code}";`;
   return queryStr;
 }
 
@@ -159,7 +155,7 @@ StockHistory.prototype.deleteAll = function() {
   let thisDb = this.db;
 
   return new Promise(function(resolve, reject) {
-    var strQuery = "DELETE FROM STOCK_HISTORY;";
+    var strQuery = `DELETE FROM STOCK_HISTORY;`;
 
     // Execute sql
     thisDb.all(strQuery, function(err, row) {
@@ -179,7 +175,7 @@ StockHistory.prototype.deleteAll = function() {
 StockHistory.prototype.get = function(code) {
   let thisDb = this.db;
   return new Promise(function(resolve, reject) {
-    var strQuery = 'SELECT * FROM STOCK_HISTORY WHERE code = "' + code + '"';
+    var strQuery = `SELECT * FROM STOCK_HISTORY WHERE code = "${code};`;
 
     // Execute sql
     thisDb.all(strQuery, function(err, row) {
@@ -205,17 +201,7 @@ StockHistory.prototype.getLimit = function(code, limit, isAscByTime) {
   let thisDb = this.db;
   let strOrder = isAscByTime === true ? "ASC" : "DESC";
   return new Promise(function(resolve, reject) {
-    var strQuery =
-      'SELECT * FROM STOCK_HISTORY WHERE code = "' +
-      code +
-      '" ORDER BY time ' +
-      strOrder +
-      " LIMIT " +
-      limit;
-
-    // Logging
-    // console.log("Get data from STOCK_HISTORY table.");
-    // console.log("SQL query: ", strQuery);
+    var strQuery = `SELECT * FROM STOCK_HISTORY WHERE code = "${code}" ORDER BY time ${strOrder} LIMIT ${limit};`;
 
     // Execute sql
     thisDb.all(strQuery, function(err, row) {
@@ -282,20 +268,17 @@ StockHistory.prototype.insert = function(data) {
 
 StockHistory.prototype.getAnalysisMACD = function(limitTime) {
   var thisDb = this.db;
-  var strQuery =
-    "select code, time, open, macd_histogram, volume,(close - open) as grow " +
-    "from stock_history " +
-    "where open > 15 " +
-    "and macd_histogram > -2 " +
-    "and volume > 500000 " +
-    "and time >= (select min(mintime) from (select distinct time as mintime from stock_history order by time desc limit " +
-    limitTime +
-    ")) " +
-    "order by time,macd_histogram desc ";
-    console.log(strQuery);
-    // Execute sql
-    return new Promise(function(resolve, reject) {
-      thisDb.all(strQuery, function(err, row) {
+  var strQuery = `SELECT code, time, open, macd_histogram, volume,(close - open) AS grow 
+     FROM STOCK_HISTORY 
+     WHERE open > 15 
+      AND macd_histogram > -2 
+      AND volume > 500000 
+      AND time >= (SELECT MIN(mintime) FROM (SELECT DISTINCT time AS mintime FROM STOCK_HISTORY ORDER BY time DESC LIMIT ${limitTime}))
+     ORDER BY time, macd_histogram DESC;`;
+
+  // Execute sql
+  return new Promise(function(resolve, reject) {
+    thisDb.all(strQuery, function(err, row) {
       if (err) {
         reject({ err: err });
       } else {

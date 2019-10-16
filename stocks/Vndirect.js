@@ -15,7 +15,7 @@ const URL_STOCK_LIST =
 const URL_INTRA_HISTORY =
   "https://finfo-api.vndirect.com.vn/v3/stocks/intraday/history?symbols=FPT&sort=-time&limit=1000&fromDate=2019-09-23&toDate=2019-09-23&fields=symbol,last,lastVol,time";
 
-const CONCURRENCY = 10;
+const CONCURRENCY = 15;
 const IS_DELETE_DB = true;
 const SQLITE3_PATH = "./stock.db";
 
