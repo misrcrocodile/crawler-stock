@@ -2,7 +2,8 @@ const moment = require("moment");
 const Schedule = require("node-schedule");
 const VND = require("./stocks/Vndirect");
 
-Schedule.scheduleJob("0 * * * *", function() {
+// run job every 15 minutes
+Schedule.scheduleJob("*/15 * * * *", function() {
   // Setting time
   let fromTime = moment({ hours: 11, minutes: 30, seconds: 0 })
     .unix()
@@ -22,7 +23,6 @@ Schedule.scheduleJob("0 * * * *", function() {
       moment().format("MMMM Do YYYY, h:mm:ss a")
     );
     
-    // Crawl Data
     VND.runEveryday();
   }
 });

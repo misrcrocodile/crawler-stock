@@ -5,6 +5,7 @@ const sqlite3 = require("../utils/adapter.js");
 const Indicator = require("./../utils/Indicator");
 const StockHistory = require("../models/StockHistory");
 const Util = require("../utils/Util");
+const fs = require("fs");
 
 const URL_STOCK_CODE_LIST =
   "https://price-as01.vndirect.com.vn/priceservice/secinfo/snapshot/q=floorCode:10,02,03";
@@ -19,10 +20,18 @@ const CONCURRENCY = 15;
 const IS_DELETE_DB = true;
 const SQLITE3_PATH = "./stock.db";
 
-// delete file named SQLITE3_PATH
-if (IS_DELETE_DB) {
-  const fs = require("fs");
 
+// Init sqlite
+let db = null;
+
+// Init stockHistory
+let stockHistory = null;
+
+initDB();
+
+function initDB() {
+  
+  // delete file named SQLITE3_PATH
   fs.unlink(SQLITE3_PATH, function(err) {
     if (err) {
       console.log("Have no file to delete.");
@@ -30,20 +39,19 @@ if (IS_DELETE_DB) {
     // if no error, file has been deleted successfully
     console.log("File deleted!");
   });
+
+  // Init sqlite
+  db = sqlite3.init(SQLITE3_PATH);
+  stockHistory = new StockHistory(db);
+
 }
-
-// Init sqlite
-const db = sqlite3.init(SQLITE3_PATH);
-
-// Init stockHistory
-const stockHistory = new StockHistory(db);
 
 // Get all stock code list of the whole market
 async function getListCode() {
   var codeList = [];
 
   // Getting data
-  var data = await Util.fetchGet(URL_STOCK_CODE_LIST);
+  var data = await  Util.fetchGet(URL_STOCK_CODE_LIST);
 
   // Executing data
   for (var key in data) {
@@ -162,7 +170,7 @@ function calcIndicator(data) {
 }
 
 // run only once when init project
-async function initDatabase() {
+async function initCrawler() {
   var codeList = await getListCode();
 
   // Creatting promise
@@ -345,12 +353,13 @@ async function updateDashboard() {
 }
 
 async function runEveryday() {
-  await initDatabase();
+  initDB();
+  await initCrawler();
   return updateDashboard();
 }
 
 module.exports = {
-  initDatabase, // Run for the first time init project
+  initCrawler, // Run for the first time init project
   insertAll, // insert all stock
   updateAll, // update all stock
   calcIndicator, // calcIndicator
