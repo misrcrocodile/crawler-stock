@@ -1,8 +1,7 @@
 const Promise = require("bluebird");
 const moment = require("moment");
 
-const sqlite3 = require("../utils/adapter.js");
-const Indicator = require("./../utils/Indicator");
+const Indicator = require("../utils/Indicator");
 const StockHistory = require("../models/StockHistory");
 const Util = require("../utils/Util");
 const fs = require("fs");
@@ -17,41 +16,16 @@ const URL_INTRA_HISTORY =
   "https://finfo-api.vndirect.com.vn/v3/stocks/intraday/history?symbols=FPT&sort=-time&limit=1000&fromDate=2019-09-23&toDate=2019-09-23&fields=symbol,last,lastVol,time";
 
 const CONCURRENCY = 15;
-const IS_DELETE_DB = true;
-const SQLITE3_PATH = "./stock.db";
-
-
-// Init sqlite
-let db = null;
 
 // Init stockHistory
-let stockHistory = null;
-
-initDB();
-
-function initDB() {
-  
-  // delete file named SQLITE3_PATH
-  fs.unlink(SQLITE3_PATH, function(err) {
-    if (err) {
-      console.log("Have no file to delete.");
-    }
-    // if no error, file has been deleted successfully
-    console.log("File deleted!");
-  });
-
-  // Init sqlite
-  db = sqlite3.init(SQLITE3_PATH);
-  stockHistory = new StockHistory(db);
-
-}
+let stockHistory = new StockHistory(false);
 
 // Get all stock code list of the whole market
 async function getListCode() {
   var codeList = [];
 
   // Getting data
-  var data = await  Util.fetchGet(URL_STOCK_CODE_LIST);
+  var data = await Util.fetchGet(URL_STOCK_CODE_LIST);
 
   // Executing data
   for (var key in data) {
@@ -69,7 +43,7 @@ async function getLastStockData(stockCode) {
   var strTo = moment()
     .unix()
     .toString();
-  strTo = strTo.substr(0, strTo.length - 3);
+  strTo = strTo.substr(0, strTo.length - 3) * 1000;
 
   // Fromday string
   var strFrom = "";
@@ -118,14 +92,20 @@ function getLastStockData_WithoutReject(stockCode) {
   });
 }
 
-// get stock data from init day
-async function getAll(stockCode) {
+async function getStockData(stockCode, numberOfSession = 0) {
   var strToDay = moment()
     .unix()
     .toString();
   var strFromDay = moment("1-1-2000", "MM-DD-YYYY")
     .unix()
     .toString();
+
+  if (numberOfSession !== 0) {
+    strFromDay = moment()
+      .subtract(numberOfSession, "days")
+      .unix()
+      .toString();
+  }
 
   strToDay = strToDay.substr(0, strToDay.length - 3) + "000";
   strFromDay = strFromDay.substr(0, strFromDay.length - 3) + "000";
@@ -151,6 +131,15 @@ async function getAll(stockCode) {
   return retObj;
 }
 
+// get stock data from init day
+async function getAllStockData(stockCode) {
+  return getStockData(stockCode);
+}
+
+function getWeekStockData(stockCode) {
+  return getStockData(stockCode, 7);
+}
+
 // calculate indicator
 function calcIndicator(data) {
   let macd = Indicator.calculateMACD(data.close);
@@ -165,56 +154,106 @@ function calcIndicator(data) {
 
   data.rsi14 = Indicator.calculateRSI14(data.close);
   data.mfi14 = Indicator.calculateMFI14(data);
-
+  data.vol20 = Indicator.calculateVol20(data.volume);
   return data;
 }
 
-// run only once when init project
-async function initCrawler() {
+async function runCrawler1() {
+  // get code stock list
   var codeList = await getListCode();
+  let lastTime;
+  let weekData = await Promise.map(codeList, getWeekStockData, {
+    concurrency: CONCURRENCY
+  });
+  
+  // remove banned item
+  weekData = weekData.filter(e => e.length > 0);
 
+  // Check if data exists or not
+  if(weekData.length == 0) {
+    console.log('Cannot crawl any data.');
+    return;
+  }
+
+  lastTime = weekData[0].time.slice(-1)[0];
+  var isExistsData = await stockHistory.isExistDataByTime(lastTime);
+
+  if(isExistsData) {
+    const promiseUpdateLastItem = e => stockHistory.updateLastestItem(e).bind(stockHistory).catch();
+    await Promise.map(weekData, promiseUpdateLastItem,{concurrency: CONCURRENCY});
+  }else {
+    const promiseInsertLastItem = e => stockHistory.insertLastestItem(e).bind(stockHistory).catch();
+    await Promise.map(weekData, promiseInsertLastItem,{concurrency: CONCURRENCY});
+  }
+
+  await Promise.map(codeList, getDataAndUpdateIndicator, {concurrency:CONCURRENCY});
+}
+
+async function getDataAndUpdateIndicator(code) {
+  var data = await stockHistory.get(code);
+  data = stockHistory.toArray(data);
+  data = calcIndicator(data);
+  await stockHistory.updateLastestItem(data);
+  
+}
+
+// run only once when init project
+async function runCrawler() {
+  var codeList = await getListCode();
   // Creatting promise
-  var allPromise = Promise.map(codeList, getAll, {
+  var allValue = await Promise.map(codeList, getAllStockData, {
     concurrency: CONCURRENCY
   });
 
   // Run promise
-  return allPromise.then(allValue => {
-    var allIndicator = allValue.map(calcIndicator);
-    var childPromise = Promise.map(
-      allIndicator,
-      stockHistory.insert.bind(stockHistory),
-      {
-        concurrency: CONCURRENCY
-      }
-    );
-    return childPromise.then();
-  });
+  var allIndicator = allValue.map(calcIndicator);
+  var childPromise = Promise.map(
+    allIndicator,
+    stockHistory.insert.bind(stockHistory),
+    {
+      concurrency: CONCURRENCY
+    }
+  );
+  return childPromise.then();
 }
 
-// Inconstruct
+// TODO: edit function name
 async function updateAll() {
+  // Get list stock code
   var codeList = await getListCode();
-  var lastStockdata = await Promise.map(codeList, getLastStockData, {
+
+  // Define promise for skipping error
+  var promiseGetWeekData = code => getWeekStockData(code).catch(e => e);
+
+  // Get data from server
+  var lastStockdata = await Promise.map(codeList, promiseGetWeekData, {
     concurrency: CONCURRENCY
   });
 
+  // update data to db
   return Promise.map(
     lastStockdata,
     stockHistory.update.bind(stockHistory)
   ).then();
 }
 
+// TODO: editting
 async function insertAll() {
   // Getting code list
   var codeList = await getListCode();
 
-  // Getting lastest history data
+  var pGetLastDataNoReject = code => getLastStockData(code).catch(e => e);
+  var pGetStockHistoryNoReject = code =>
+    stockHistory
+      .get(code)
+      .bind(stockHistory)
+      .catch(err => err);
+
   var returnData = await Promise.all([
-    Promise.map(codeList, getLastStockData_WithoutReject, {
+    Promise.map(codeList, pGetLastDataNoReject, {
       concurrency: CONCURRENCY
     }),
-    Promise.map(codeList, stockHistory.get_WithoutReject.bind(stockHistory), {
+    Promise.map(codeList, pGetStockHistoryNoReject, {
       concurrency: CONCURRENCY
     })
   ]);
@@ -285,7 +324,7 @@ async function insertAll() {
 }
 
 async function updateDashboard() {
-  var row = await stockHistory.getAnalysisMACD(30);
+  var row = await stockHistory.getSummaryEveryday(30);
   var tempData = {};
   var header = [];
   var dataContent = [];
@@ -353,18 +392,27 @@ async function updateDashboard() {
 }
 
 async function runEveryday() {
-  initDB();
-  await initCrawler();
-  return updateDashboard();
+  // await initDB();
+
+  // if(stockHistory.isExistDbFile()) {
+  //   console.log('Have no database file. Create new one!');
+  //   await stockHistory.initDb(true);
+  //   await runCrawler();
+  // }
+
+  await stockHistory.initDb(false);
+  await runCrawler1();
+  // await updateDashboard();
+  // console.log('DONE RUN EVERY DAY');
 }
 
 module.exports = {
-  initCrawler, // Run for the first time init project
+  runCrawler, // Run for the first time init project
   insertAll, // insert all stock
   updateAll, // update all stock
   calcIndicator, // calcIndicator
-  getAll, // get stock data from beginning
-  getLastStockData, // Fetch newest data
+  getAllStockData, // get stock data from beginning
+  getWeekStockData, // Fetch newest data
   getListCode, // Get all code list in whole maket
   runEveryday // run Everyday job pull data from server and analysis
 };

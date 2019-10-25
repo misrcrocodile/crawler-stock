@@ -32,11 +32,11 @@ function calculateMACD(arr) {
     var signalPeriod = 9;
 
     if (!Array.isArray(arr) || arr.length < slowPeriod) {
-        returnArr.data = new Array(slowPeriod).fill({ MACD: 0, signal: 0, histogram: 0 });
-        returnArr.histogram = new Array(slowPeriod).fill(0);
-        returnArr.signal = new Array(slowPeriod).fill(0);
-        returnArr.MACD = new Array(slowPeriod).fill(0);
-        return returnArr;
+        returnArr.data = new Array(arr.length).fill({ MACD: 0, signal: 0, histogram: 0 });
+        returnArr.histogram = new Array(arr.length).fill(0);
+        returnArr.signal = new Array(arr.length).fill(0);
+        returnArr.MACD = new Array(arr.length).fill(0);
+        return returnArr; 
     }
 
     // input parameter
@@ -56,9 +56,9 @@ function calculateMACD(arr) {
     data = initData.concat(data);
 
     for (var i = 0; i < data.length; i++) {
-        returnArr.histogram.push(data[i].histogram);
-        returnArr.MACD.push(data[i].MACD);
-        returnArr.signal.push(data[i].signal);
+        returnArr.histogram.push(data[i].histogram || 0);
+        returnArr.MACD.push(data[i].MACD || 0);
+        returnArr.signal.push(data[i].signal || 0);
     }
     returnArr.data = data;
 
@@ -82,34 +82,38 @@ function calculateRSI14(arr) {
     returnArr = new Array(period).fill(0);
     arrRSI = RSI.calculate(inputRSI);
     returnArr = returnArr.concat(arrRSI);
-
     return returnArr;
 }
 
+// TODO: in bugging mode
 function calculateMFI14(data) {
-    var returnArr = [];
-    var arrRSI = [];
-    var period = 14;
+    return new Array(data.length).fill(0);
+    // var returnArr = [];
+    // var arrMFI = [];
+    // var period = 14;
 
-    if (!Array.isArray(data) || arr.length < slowPeriod) {
-        return new Array(period).fill(0);
-    }
+    // if (data.length < period) {
+    //     return new Array(period).fill(0);
+    // }
 
-    var inputRSI = {
-        high: data.high,
-        low: data.low,
-        close: data.close,
-        volume: data.volume,
-        period: period
-    }
+    // var inputMFI = {
+    //     high: data.high,
+    //     low: data.low,
+    //     close: data.close,
+    //     volume: data.volume,
+    //     period: period
+    // }
 
-    returnArr = new Array(period - 1).fill(0);
-    arrRSI = RSI.calculate(inputRSI);
-    returnArr = returnArr.concat(arrRSI);
-    return returnArr;
+    // returnArr = new Array(period + 1).fill(0);
+    // arrMFI = MFI.calculate(inputMFI);
+    // returnArr = returnArr.concat(arrMFI);
+    // return returnArr;
 }
 
-
+const calculateVol20 = arr => {
+    const period = 20;
+    return calculateMA(arr, period);
+}
 // function getSMA(StockCode, numberOfDate, period) {
 
 //     return getStockHistory(StockCode, numberOfDate).then(data => {
@@ -129,5 +133,6 @@ module.exports = {
     calculateMACD,
     calculateMA,
     calculateRSI14,
-    calculateMFI14
+    calculateMFI14,
+    calculateVol20,
 }

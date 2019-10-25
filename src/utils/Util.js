@@ -1,4 +1,5 @@
 const fetch = require("node-fetch");
+const fs = require("fs");
 
 function space(str, size) {
   str = String(str);
@@ -28,8 +29,21 @@ function fetchGet(url) {
   }).then(res => res.json());
 }
 
+function fileIsExists(path) {
+  try {
+    if (fs.existsSync(path)) {
+      return true;
+    } else {
+      return false;
+    }
+  } catch(err) {
+    return false;
+  }
+  return false;
+}
 module.exports = {
   space,
   saveNote,
-  fetchGet
+  fetchGet,
+  fileIsExists
 };
