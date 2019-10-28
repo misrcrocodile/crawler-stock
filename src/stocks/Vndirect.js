@@ -394,16 +394,16 @@ async function updateDashboard() {
 async function runEveryday() {
   // await initDB();
 
-  // if(stockHistory.isExistDbFile()) {
-  //   console.log('Have no database file. Create new one!');
-  //   await stockHistory.initDb(true);
-  //   await runCrawler();
-  // }
+  if(!stockHistory.isExistDbFile()) {
+    console.log('Have no database file. Create new one!');
+    await stockHistory.initDb(true);
+    await runCrawler();
+  }
 
   await stockHistory.initDb(false);
   await runCrawler1();
-  // await updateDashboard();
-  // console.log('DONE RUN EVERY DAY');
+  await updateDashboard();
+  console.log('DONE RUN EVERY DAY');
 }
 
 module.exports = {

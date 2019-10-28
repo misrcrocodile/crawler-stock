@@ -22,8 +22,10 @@ const PROPERTY_LIST = [
 ];
 
 // CONSTRUCTOR
-var StockHistory = function(isDeleteDb = false) {
-  initDb();
+var StockHistory = function(isInitDbFile = false) {
+  if(isInitDbFile) {
+    initDb();
+  }
 };
 
 StockHistory.prototype.isExistDbFile = function() {
