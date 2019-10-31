@@ -391,6 +391,10 @@ async function updateDashboard() {
   return Util.saveNote("stockdata", realtimeList.join(","));
 }
 
+async function updateTopGrow() {
+  const data = await stockHistory.getTopGrow();
+  await Util.saveNote("topgrowdata", JSON.stringify(data));
+}
 async function runEveryday() {
   // await initDB();
 
@@ -403,6 +407,7 @@ async function runEveryday() {
   await stockHistory.initDb(false);
   await runCrawler1();
   await updateDashboard();
+  await updateTopGrow();
   console.log('DONE RUN EVERY DAY');
 }
 

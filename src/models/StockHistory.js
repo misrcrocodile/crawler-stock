@@ -137,6 +137,15 @@ StockHistory.prototype.toArray = function(data) {
   return toArray(data);
 };
 
+StockHistory.prototype.getTopGrow = function() {
+  var strQuery = `select code, close, round(close-open,2) as grow, round((close-open)*100/open,2) || '%' as percent, volume from Stock_history
+  where time = (select max(time) from stock_history)
+  and volume > 200000
+  and close > 10
+  order by percent desc
+  limit 50`;
+  return executeSqlPull(strQuery, 'error in getting topGrow everyday');
+}
 function deleteDbFile() {
   new Promise((resolve, reject) => {
     // delete file named SQLITE3_PATH
