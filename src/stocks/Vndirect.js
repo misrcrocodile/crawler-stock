@@ -12,6 +12,8 @@ const URL_DAY_HISTORY =
   "https://dchart-api.vndirect.com.vn/dchart/history?resolution=D&symbol="; // parameter resolution, symbol, from, to
 const URL_STOCK_LIST =
   "https://price-fpt-03.vndirect.com.vn/priceservice/secinfo/snapshot/q=codes:";
+const URL_STOCK_SNAPSHOT =
+  "https://price-as02.vndirect.com.vn/priceservice/secinfo/snapshot/q=codes:";
 const URL_INTRA_HISTORY =
   "https://finfo-api.vndirect.com.vn/v3/stocks/intraday/history?symbols=FPT&sort=-time&limit=1000&fromDate=2019-09-23&toDate=2019-09-23&fields=symbol,last,lastVol,time";
 
@@ -159,34 +161,43 @@ function calcIndicator(data) {
 }
 
 async function runCrawler1() {
-  // get code stock list
-  var codeList = await getListCode();
-  let lastTime;
-  let weekData = await Promise.map(codeList, getWeekStockData, {
-    concurrency: CONCURRENCY
-  });
-  
+
   // remove banned item
-  weekData = weekData.filter(e => e.length > 0);
+  var rawdata = await getToDayStockData();
 
   // Check if data exists or not
-  if(weekData.length == 0) {
-    console.log('Cannot crawl any data.');
+  if (rawdata.length == 0) {
+    console.log("Cannot crawl any data.");
     return;
   }
-
-  lastTime = weekData[0].time.slice(-1)[0];
+  var weekData = rawdata.map(e => StockHistory.toArray(e).bind(stockHistory));
+  
+  lastTime = weekData[0].slice(-1)[0];
   var isExistsData = await stockHistory.isExistDataByTime(lastTime);
 
-  if(isExistsData) {
-    const promiseUpdateLastItem = e => stockHistory.updateLastestItem(e).bind(stockHistory).catch();
-    await Promise.map(weekData, promiseUpdateLastItem,{concurrency: CONCURRENCY});
-  }else {
-    const promiseInsertLastItem = e => stockHistory.insertLastestItem(e).bind(stockHistory).catch();
-    await Promise.map(weekData, promiseInsertLastItem,{concurrency: CONCURRENCY});
+  if (isExistsData) {
+    const promiseUpdateLastItem = e =>
+      stockHistory
+        .updateLastestItem(e)
+        .bind(stockHistory)
+        .catch();
+    await Promise.map(weekData, promiseUpdateLastItem, {
+      concurrency: CONCURRENCY
+    });
+  } else {
+    const promiseInsertLastItem = e =>
+      stockHistory
+        .insertLastestItem(e)
+        .bind(stockHistory)
+        .catch();
+    await Promise.map(weekData, promiseInsertLastItem, {
+      concurrency: CONCURRENCY
+    });
   }
 
-  await Promise.map(codeList, getDataAndUpdateIndicator, {concurrency:CONCURRENCY});
+  await Promise.map(codeList, getDataAndUpdateIndicator, {
+    concurrency: CONCURRENCY
+  });
 }
 
 async function getDataAndUpdateIndicator(code) {
@@ -194,7 +205,6 @@ async function getDataAndUpdateIndicator(code) {
   data = stockHistory.toArray(data);
   data = calcIndicator(data);
   await stockHistory.updateLastestItem(data);
-  
 }
 
 // run only once when init project
@@ -398,17 +408,111 @@ async function updateTopGrow() {
 async function runEveryday() {
   // await initDB();
 
-  if(!stockHistory.isExistDbFile()) {
-    console.log('Have no database file. Create new one!');
+  if (!stockHistory.isExistDbFile()) {
+    console.log("Have no database file. Create new one!");
     await stockHistory.initDb(true);
     await runCrawler();
   }
 
   await stockHistory.initDb(false);
-  await runCrawler1();
+  try {
+    await runCrawler1();
+  } catch (e) {
+    console.log(e);
+  }
   await updateDashboard();
   await updateTopGrow();
-  console.log('DONE RUN EVERY DAY');
+  console.log("DONE RUN EVERY DAY");
+}
+
+function getSnapshotObj(strStock) {
+  let obj = {};
+  let arr = strStock.split("|");
+  obj["floorCode"] = arr[0];
+  obj["tradingDate"] = arr[1];
+  
+  // check data exists or not
+  if( obj["tradingDate"] === "") {
+    return undefined;
+  }
+
+  let strTime = moment(parseInt(arr[1])).format("YYYY-MM-DD") + "T09:00:00+09:00";
+  strTime = moment(strTime)
+    .unix()
+    .toString();
+  obj["tradingDate"] = strTime; // time
+
+  obj["time"] = arr[2];
+  obj["code"] = arr[3]; // code
+  obj["stockType"] = arr[5];
+  obj["totalRoom"] = arr[6];
+  obj["currentRoom"] = arr[7];
+  obj["basicPrice"] = arr[8];
+  obj["openPrice"] = arr[9]; // open
+  obj["matchPrice"] = arr[10];
+  obj["currentQtty"] = arr[12];
+  obj["highestPrice"] = arr[13]; // high
+  obj["lowestPrice"] = arr[14]; // low
+  obj["ceilingPrice"] = arr[15];
+  obj["floorPrice"] = arr[16];
+  obj["totalOfferQtty"] = arr[17];
+  obj["totalBidQtty"] = arr[18];
+  obj["closePrice"] = arr[19]; // close
+  if(arr[19] == "") {
+    console.log();
+  }else {
+    console.log();
+  }
+  obj["matchQtty"] = arr[20];
+  obj["matchValue"] = arr[21];
+  obj["averagePrice"] = arr[22];
+  obj["bidPrice01"] = arr[23];
+  obj["bidQtty01"] = arr[24];
+  obj["bidPrice02"] = arr[25];
+  obj["bidQtty02"] = arr[26];
+  obj["bidPrice03"] = arr[27];
+  obj["bidQtty03"] = arr[28];
+  obj["offerPrice01"] = arr[29];
+  obj["offerQtty01"] = arr[30];
+  obj["offerPrice02"] = arr[31];
+  obj["offerQtty02"] = arr[32];
+  obj["offerPrice03"] = arr[33];
+  obj["offerQtty03"] = arr[34];
+  obj["accumulatedVal"] = arr[35];
+  obj["accumulatedVol"] = arr[36]; // volume
+  obj["buyForeignQtty"] = arr[37];
+  obj["sellForeignQtty"] = arr[38];
+  return obj;
+}
+
+async function getToDayStockData() {
+  let allCode = await getListCode();
+  let url = URL_STOCK_SNAPSHOT + allCode.join(",");
+  let arrData = await Util.fetchGet(url);
+
+  let snapshotArr = arrData.map(e => getSnapshotObj(e));
+  console.log("snapshot item number: ", snapshotArr.length);
+  // remove undefined item
+  snapshotArr = snapshotArr.filter( e => {
+    return e != null;
+  });
+  console.log("snapshot item number: ", snapshotArr.length);
+  let returnArr = snapshotArr.map(e => {
+    try {
+    return {
+      code: e.code,
+      time: e.time,
+      open: e.openPrice,
+      close: e.closePrice,
+      high: e.highestPrice,
+      low: e.lowestPrice,
+      volume: e.accumulatedVol
+    };
+  }catch(ex) {
+      console.log(ex);
+    } 
+  });
+  return returnArr;
 }
 
 module.exports = {
@@ -419,5 +523,6 @@ module.exports = {
   getAllStockData, // get stock data from beginning
   getWeekStockData, // Fetch newest data
   getListCode, // Get all code list in whole maket
-  runEveryday // run Everyday job pull data from server and analysis
+  runEveryday, // run Everyday job pull data from server and analysis
+  //debugCode
 };
