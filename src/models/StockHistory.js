@@ -146,6 +146,9 @@ StockHistory.prototype.getTopGrow = function() {
   limit 50`;
   return executeSqlPull(strQuery, 'error in getting topGrow everyday');
 }
+StockHistory.prototype.getLastestBulk = function(data) {
+  return getLastBulkItem(data);
+}
 function deleteDbFile() {
   new Promise((resolve, reject) => {
     // delete file named SQLITE3_PATH
@@ -205,7 +208,6 @@ function toArray(objArr) {
 
   // Set size of item
   bulkObj.length = objArr.length;
-
   return bulkObj;
 }
 

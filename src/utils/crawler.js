@@ -3,7 +3,7 @@ var Crawler = require("crawler");
 
 var c = new Crawler({
     maxConnections: 10,
-    rateLimit: 1000
+    rateLimit: 1=4000
 });
 
 function fetch(url) {

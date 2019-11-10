@@ -18,10 +18,6 @@ const URL_INTRA_HISTORY =
   "https://finfo-api.vndirect.com.vn/v3/stocks/intraday/history?symbols=FPT&sort=-time&limit=1000&fromDate=2019-09-23&toDate=2019-09-23&fields=symbol,last,lastVol,time";
 
 const CONCURRENCY = 10;
-let count = 0;
-let logCount = function() {
-  console.log(count++);
-}
 // Init stockHistory
 let stockHistory = new StockHistory(false);
 
@@ -142,7 +138,6 @@ async function getAllStockData(stockCode) {
 }
 
 function getWeekStockData(stockCode) {
-  logCount();
   return getStockData(stockCode, 7);
 }
 
@@ -165,18 +160,18 @@ function calcIndicator(data) {
 }
 
 async function runCrawler1() {
-
   // remove banned item
-  var rawdata = await getWeekStockData();
+  var codeList = await getListCode();
+  var weekData = await getToDayStockData();
 
   // Check if data exists or not
-  if (rawdata.length == 0) {
+  if (weekData.length == 0) {
     console.log("Cannot crawl any data.");
     return;
   }
-  var weekData = rawdata.map(e => stockHistory.toArray(e).bind(stockHistory));
+
+  let lastTime = weekData[0].time;
   
-  lastTime = weekData[0].slice(-1)[0];
   var isExistsData = await stockHistory.isExistDataByTime(lastTime);
 
   if (isExistsData) {
@@ -416,6 +411,7 @@ async function runEveryday() {
     console.log("Have no database file. Create new one!");
     await stockHistory.initDb(true);
     await runCrawler();
+    return;
   }
 
   await stockHistory.initDb(false);
@@ -434,13 +430,14 @@ function getSnapshotObj(strStock) {
   let arr = strStock.split("|");
   obj["floorCode"] = arr[0];
   obj["tradingDate"] = arr[1];
-  
+
   // check data exists or not
-  if( obj["tradingDate"] === "") {
+  if (obj["tradingDate"] === "") {
     return undefined;
   }
 
-  let strTime = moment(parseInt(arr[1])).format("YYYY-MM-DD") + "T09:00:00+09:00";
+  let strTime =
+    moment(parseInt(arr[1])).format("YYYY-MM-DD") + "T09:00:00+09:00";
   strTime = moment(strTime)
     .unix()
     .toString();
@@ -462,11 +459,6 @@ function getSnapshotObj(strStock) {
   obj["totalOfferQtty"] = arr[17];
   obj["totalBidQtty"] = arr[18];
   obj["closePrice"] = arr[19]; // close
-  if(arr[19] == "") {
-    console.log();
-  }else {
-    console.log();
-  }
   obj["matchQtty"] = arr[20];
   obj["matchValue"] = arr[21];
   obj["averagePrice"] = arr[22];
@@ -489,41 +481,66 @@ function getSnapshotObj(strStock) {
   return obj;
 }
 
+function isValidSnapshotData(a) {
+  if (a.openPrice === "") return false;
+  if (a.closePrice === "") return false;
+  if (a.highestPrice === "") return false;
+  if (a.lowestPrice === "") return false;
+  if (a.accumulatedVol === "") return false;
+  return true;
+}
 async function getToDayStockData() {
   let allCode = await getListCode();
   let url = URL_STOCK_SNAPSHOT + allCode.join(",");
   let arrData = await Util.fetchGet(url);
-
+  let lastestTime = await getLastestTime();
   let snapshotArr = arrData.map(e => getSnapshotObj(e));
   console.log("snapshot item number: ", snapshotArr.length);
+
   // remove undefined item
-  snapshotArr = snapshotArr.filter( e => {
+  snapshotArr = snapshotArr.filter(e => {
     return e != null;
   });
+  snapshotArr = snapshotArr.filter( e => {
+    return isValidSnapshotData(e);
+  });
+  // for( let i = 0; i < snapshotArr.length; i++) {
+  //   if(!isValidSnapshotData(snapshotArr[i])) {
+  //     var data = await getWeekStockData(snapshotArr[i].code);
+  //     var bulk = stockHistory.getLastestBulk(data);
+  //     snapshotArr[i] = {...snapshotArr[i], openPrice:bulk.open, closePrice: bulk.close, highestPrice: bulk.high, lowestPrice: bulk.low, accumulatedVol: bulk.volume};
+  //   }
+  // }
   console.log("snapshot item number: ", snapshotArr.length);
   let returnArr = snapshotArr.map(e => {
-    try {
     return {
       code: e.code,
-      time: e.time,
+      time: lastestTime,
       open: e.openPrice,
       close: e.closePrice,
       high: e.highestPrice,
       low: e.lowestPrice,
       volume: e.accumulatedVol
     };
-  }catch(ex) {
-      console.log(ex);
-    } 
   });
   return returnArr;
 }
-var debugCode = function() {
-  var codeList = new Array(5000).fill("FPT");
-  Promise.map(codeList, getWeekStockData, {
-    concurrency: CONCURRENCY
+
+async function getLastestTime() {
+  let data = await getWeekStockData("FPT");
+  var bulk = stockHistory.getLastestBulk(data);
+  return bulk.time;
+}
+var debugCode = async function() {
+  var an = await getToDayStockData();
+  an.map(e => {
+    console.log(JSON.stringify(e));
   });
-} 
+  // var codeList = await getListCode();
+  // Promise.map(codeList, getWeekStockData, {
+  //   concurrency: CONCURRENCY
+  // });
+};
 module.exports = {
   runCrawler, // Run for the first time init project
   insertAll, // insert all stock

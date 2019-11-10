@@ -22,7 +22,7 @@ const VND = require("./src/stocks/Vndirect");
       "Execute job at: ",
       moment().format("MMMM Do YYYY, h:mm:ss a")
     );
-    VND.debugCode();
-    // VND.runEveryday();
+    // VND.debugCode();
+    VND.runEveryday();
   // }
 // });
