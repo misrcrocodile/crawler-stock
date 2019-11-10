@@ -501,16 +501,19 @@ async function getToDayStockData() {
   snapshotArr = snapshotArr.filter(e => {
     return e != null;
   });
-  snapshotArr = snapshotArr.filter( e => {
-    return isValidSnapshotData(e);
-  });
-  // for( let i = 0; i < snapshotArr.length; i++) {
-  //   if(!isValidSnapshotData(snapshotArr[i])) {
-  //     var data = await getWeekStockData(snapshotArr[i].code);
-  //     var bulk = stockHistory.getLastestBulk(data);
-  //     snapshotArr[i] = {...snapshotArr[i], openPrice:bulk.open, closePrice: bulk.close, highestPrice: bulk.high, lowestPrice: bulk.low, accumulatedVol: bulk.volume};
-  //   }
-  // }
+
+  // snapshotArr = snapshotArr.filter( e => {
+  //   return isValidSnapshotData(e);
+  // });
+  
+  for( let i = 0; i < snapshotArr.length; i++) {
+    if(!isValidSnapshotData(snapshotArr[i])) {
+      var data = await getWeekStockData(snapshotArr[i].code);
+      var bulk = stockHistory.getLastestBulk(data);
+      snapshotArr[i] = {...snapshotArr[i], openPrice:bulk.open, closePrice: bulk.close, highestPrice: bulk.high, lowestPrice: bulk.low, accumulatedVol: bulk.volume};
+    }
+  }
+  
   console.log("snapshot item number: ", snapshotArr.length);
   let returnArr = snapshotArr.map(e => {
     return {
