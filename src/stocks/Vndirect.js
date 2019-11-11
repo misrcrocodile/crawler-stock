@@ -138,7 +138,7 @@ async function getAllStockData(stockCode) {
 }
 
 function getWeekStockData(stockCode) {
-  return getStockData(stockCode, 7);
+  return getStockData(stockCode, 100);
 }
 
 // calculate indicator
@@ -507,13 +507,13 @@ async function getToDayStockData() {
   // });
   
   for( let i = 0; i < snapshotArr.length; i++) {
+    snapshotArr[i].accumulatedVol *=10;
     if(!isValidSnapshotData(snapshotArr[i])) {
       var data = await getWeekStockData(snapshotArr[i].code);
       var bulk = stockHistory.getLastestBulk(data);
       snapshotArr[i] = {...snapshotArr[i], openPrice:bulk.open, closePrice: bulk.close, highestPrice: bulk.high, lowestPrice: bulk.low, accumulatedVol: bulk.volume};
     }
-  }
-  
+}
   console.log("snapshot item number: ", snapshotArr.length);
   let returnArr = snapshotArr.map(e => {
     return {
