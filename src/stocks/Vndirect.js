@@ -4,8 +4,7 @@ const moment = require("moment");
 const Indicator = require("../utils/Indicator");
 const StockHistory = require("../models/StockHistory");
 const Util = require("../utils/Util");
-const fs = require("fs");
-
+const fetch = require('../utils/crawler').fetchJSON;
 const URL_STOCK_CODE_LIST =
   "https://price-as01.vndirect.com.vn/priceservice/secinfo/snapshot/q=floorCode:10,02,03";
 const URL_DAY_HISTORY =
@@ -17,7 +16,9 @@ const URL_STOCK_SNAPSHOT =
 const URL_INTRA_HISTORY =
   "https://finfo-api.vndirect.com.vn/v3/stocks/intraday/history?symbols=FPT&sort=-time&limit=1000&fromDate=2019-09-23&toDate=2019-09-23&fields=symbol,last,lastVol,time";
 
-const CONCURRENCY = 10;
+const HIGH_CONCURRENCY = 20;
+const LOW_CONCURRENCY = 20;
+
 // Init stockHistory
 let stockHistory = new StockHistory(false);
 
@@ -87,12 +88,6 @@ async function getLastStockData(stockCode) {
   return retObj;
 }
 
-function getLastStockData_WithoutReject(stockCode) {
-  return getLastStockData(stockCode).catch(err => {
-    return err;
-  });
-}
-
 async function getStockData(stockCode, numberOfSession = 0) {
   var strToDay = moment()
     .unix()
@@ -114,8 +109,7 @@ async function getStockData(stockCode, numberOfSession = 0) {
   var strUrl =
     URL_DAY_HISTORY + stockCode + "&from=" + strFromDay + "&to=" + strToDay;
 
-  // Fetching data
-  var data = await Util.fetchGet(strUrl);
+  var data = await fetch(strUrl);
   console.log(`Fetching history: code = ${stockCode} ~> Done!`);
 
   var retObj = {};
@@ -132,31 +126,8 @@ async function getStockData(stockCode, numberOfSession = 0) {
   return retObj;
 }
 
-// get stock data from init day
-async function getAllStockData(stockCode) {
-  return getStockData(stockCode);
-}
-
 function getWeekStockData(stockCode) {
   return getStockData(stockCode, 100);
-}
-
-// calculate indicator
-function calcIndicator(data) {
-  let macd = Indicator.calculateMACD(data.close);
-
-  data.ma9 = Indicator.calculateMA(data.close, 9);
-  data.ma20 = Indicator.calculateMA(data.close, 20);
-  data.ma200 = Indicator.calculateMA(data.close, 200);
-
-  data.macd_macd = macd.MACD;
-  data.macd_histogram = macd.histogram;
-  data.macd_signal = macd.signal;
-
-  data.rsi14 = Indicator.calculateRSI14(data.close);
-  data.mfi14 = Indicator.calculateMFI14(data);
-  data.vol20 = Indicator.calculateVol20(data.volume);
-  return data;
 }
 
 async function runCrawler1() {
@@ -171,7 +142,7 @@ async function runCrawler1() {
   }
 
   let lastTime = weekData[0].time;
-  
+
   var isExistsData = await stockHistory.isExistDataByTime(lastTime);
 
   if (isExistsData) {
@@ -181,7 +152,7 @@ async function runCrawler1() {
         .bind(stockHistory)
         .catch();
     await Promise.map(weekData, promiseUpdateLastItem, {
-      concurrency: CONCURRENCY
+      concurrency: HIGH_CONCURRENCY
     });
   } else {
     const promiseInsertLastItem = e =>
@@ -190,149 +161,47 @@ async function runCrawler1() {
         .bind(stockHistory)
         .catch();
     await Promise.map(weekData, promiseInsertLastItem, {
-      concurrency: CONCURRENCY
+      concurrency: HIGH_CONCURRENCY
     });
   }
 
   await Promise.map(codeList, getDataAndUpdateIndicator, {
-    concurrency: CONCURRENCY
+    concurrency: HIGH_CONCURRENCY
   });
 }
 
 async function getDataAndUpdateIndicator(code) {
   var data = await stockHistory.get(code);
   data = stockHistory.toArray(data);
-  data = calcIndicator(data);
+  data = Indicator.calc(data);
   await stockHistory.updateLastestItem(data);
 }
 
 // run only once when init project
 async function runCrawler() {
+  console.log('Run crawler ...')
   var codeList = await getListCode();
+  var getStockDataMod = e => getStockData(e,0);
   // Creatting promise
-  var allValue = await Promise.map(codeList, getAllStockData, {
-    concurrency: CONCURRENCY
+  var allValue = await Promise.map(codeList, getStockDataMod, {
+    concurrency: LOW_CONCURRENCY
   });
 
   // Run promise
-  var allIndicator = allValue.map(calcIndicator);
+  var allIndicator = allValue.map(Indicator.calc).filter(e => e.length > 0);
+  
   var childPromise = Promise.map(
     allIndicator,
     stockHistory.insert.bind(stockHistory),
     {
-      concurrency: CONCURRENCY
+      concurrency: HIGH_CONCURRENCY
     }
   );
   return childPromise.then();
 }
 
-// TODO: edit function name
-async function updateAll() {
-  // Get list stock code
-  var codeList = await getListCode();
-
-  // Define promise for skipping error
-  var promiseGetWeekData = code => getWeekStockData(code).catch(e => e);
-
-  // Get data from server
-  var lastStockdata = await Promise.map(codeList, promiseGetWeekData, {
-    concurrency: CONCURRENCY
-  });
-
-  // update data to db
-  return Promise.map(
-    lastStockdata,
-    stockHistory.update.bind(stockHistory)
-  ).then();
-}
-
-// TODO: editting
-async function insertAll() {
-  // Getting code list
-  var codeList = await getListCode();
-
-  var pGetLastDataNoReject = code => getLastStockData(code).catch(e => e);
-  var pGetStockHistoryNoReject = code =>
-    stockHistory
-      .get(code)
-      .bind(stockHistory)
-      .catch(err => err);
-
-  var returnData = await Promise.all([
-    Promise.map(codeList, pGetLastDataNoReject, {
-      concurrency: CONCURRENCY
-    }),
-    Promise.map(codeList, pGetStockHistoryNoReject, {
-      concurrency: CONCURRENCY
-    })
-  ]);
-
-  var lastData = returnData[0];
-  var historyData = returnData[1];
-  var insertList = [];
-
-  // Checking data
-  if (lastData.length !== historyData.length) {
-    return Promise.reject({
-      error: "lastData.length !== historyData.length"
-    });
-  }
-
-  // Looping each stock item
-  for (var i = 0; i < historyData.length; i++) {
-    if (lastData[i].err || historyData[i].err) {
-      console.error("error ", lastData[i].err, historyData[i].err);
-      continue;
-    }
-
-    var data = stockHistory.convert2DataArray(historyData[i]);
-    var insertData = {};
-
-    // Adding last data to stockHistory before calculate indicator
-    for (key in data) {
-      if (Array.isArray(data[key])) {
-        data[key].push(0);
-      }
-    }
-
-    // Adding new item to the end of the list
-    data.length += 1;
-    data.time[data.length - 1] = lastData[i].time[0];
-    data.high[data.length - 1] = lastData[i].high[0];
-    data.low[data.length - 1] = lastData[i].low[0];
-    data.open[data.length - 1] = lastData[i].open[0];
-    data.close[data.length - 1] = lastData[i].close[0];
-    data.volume[data.length - 1] = lastData[i].volume[0];
-
-    // Calculating indicator
-    data = calcIndicator(data);
-
-    // Creating data to save to DB
-    for (key in data) {
-      if (Array.isArray(data[key])) {
-        insertData[key] = [data[key][data[key].length - 1]];
-      } else {
-        insertData[key] = data[key];
-      }
-    }
-
-    // Set length to 1
-    insertData.length = 1;
-
-    // Push new data to insert list
-    insertList.push(insertData);
-  }
-
-  // Save data to db
-  console.log("Update ", insertList.length, " codes");
-
-  // Insert list data
-  return Promise.map(insertList, stockHistory.insert.bind(stockHistory), {
-    concurrency: CONCURRENCY
-  });
-}
-
 async function updateDashboard() {
+  console.log('Run updateDashboard ...');
   var row = await stockHistory.getSummaryEveryday(30);
   var tempData = {};
   var header = [];
@@ -346,13 +215,13 @@ async function updateDashboard() {
     tempData[row[i]["time"]].push(row[i]);
   }
 
-  // create table header
+  // Create table header
   for (var key in tempData) {
     header.push(key);
     maxLen = tempData[key].length > maxLen ? tempData[key].length : maxLen;
   }
 
-  // create data blank content;
+  // Create data blank content;
   for (var i = 0; i < maxLen; i++) {
     var icontent = [];
     for (var j = 0; j < header.length; j++) {
@@ -371,6 +240,7 @@ async function updateDashboard() {
       }
     }
   }
+
   var downList = [];
   var upList = [];
   var realtimeList = [];
@@ -401,27 +271,44 @@ async function updateDashboard() {
 }
 
 async function updateTopGrow() {
+  console.log('Running updateTopGrow ...')
   const data = await stockHistory.getTopGrow();
   await Util.saveNote("topgrowdata", JSON.stringify(data));
 }
+
+// TODO: rename function
+async function updateTopGrowByDay(day) {
+  console.log('Running updateTopGrowByDay ...' + day);
+  const data = await stockHistory.getTopGrow(day);
+  await Util.saveNote("topgrow" + day, JSON.stringify(data));
+}
+
 async function runEveryday() {
-  // await initDB();
 
   if (!stockHistory.isExistDbFile()) {
+
     console.log("Have no database file. Create new one!");
     await stockHistory.initDb(true);
     await runCrawler();
-    return;
+
+  }else{
+
+    await stockHistory.initDb(false);
+
+    try {
+      await runCrawler1();
+    } catch (e) {
+      console.log(e);
+    }
   }
 
-  await stockHistory.initDb(false);
-  try {
-    await runCrawler1();
-  } catch (e) {
-    console.log(e);
-  }
   await updateDashboard();
   await updateTopGrow();
+  await updateTopGrowByDay(3);
+  await updateTopGrowByDay(20);
+  await updateTopGrowByDay(60);
+  await updateTopGrowByDay(120);
+  
   console.log("DONE RUN EVERY DAY");
 }
 
@@ -489,6 +376,7 @@ function isValidSnapshotData(a) {
   if (a.accumulatedVol === "") return false;
   return true;
 }
+
 async function getToDayStockData() {
   let allCode = await getListCode();
   let url = URL_STOCK_SNAPSHOT + allCode.join(",");
@@ -502,18 +390,31 @@ async function getToDayStockData() {
     return e != null;
   });
 
-  // snapshotArr = snapshotArr.filter( e => {
-  //   return isValidSnapshotData(e);
-  // });
-  
-  for( let i = 0; i < snapshotArr.length; i++) {
-    snapshotArr[i].accumulatedVol *=10;
-    if(!isValidSnapshotData(snapshotArr[i])) {
-      var data = await getWeekStockData(snapshotArr[i].code);
-      var bulk = stockHistory.getLastestBulk(data);
-      snapshotArr[i] = {...snapshotArr[i], openPrice:bulk.open, closePrice: bulk.close, highestPrice: bulk.high, lowestPrice: bulk.low, accumulatedVol: bulk.volume};
+  let snapshotErr = {};
+  for (let i = 0; i < snapshotArr.length; i++) {
+    snapshotArr[i].accumulatedVol *= 10;
+    if (!isValidSnapshotData(snapshotArr[i])) {
+      snapshotErr[snapshotArr[i].code] = i;
     }
-}
+  }
+
+  let errCodeList = Object.keys(snapshotErr);
+  let bulkArr = await Promise.map(errCodeList, getWeekStockData, {concurrency: LOW_CONCURRENCY});
+  
+  buklArr = bulkArr.map(e => {
+    let bulk = stockHistory.getLastestBulk(e)
+    let i = snapshotErr[bulk.code];
+
+    snapshotArr[i] = {
+      ...snapshotArr[i],
+      openPrice: bulk.open,
+      closePrice: bulk.close,
+      highestPrice: bulk.high,
+      lowestPrice: bulk.low,
+      accumulatedVol: bulk.volume
+    };
+  });
+
   console.log("snapshot item number: ", snapshotArr.length);
   let returnArr = snapshotArr.map(e => {
     return {
@@ -534,24 +435,23 @@ async function getLastestTime() {
   var bulk = stockHistory.getLastestBulk(data);
   return bulk.time;
 }
-var debugCode = async function() {
-  var an = await getToDayStockData();
-  an.map(e => {
-    console.log(JSON.stringify(e));
-  });
-  // var codeList = await getListCode();
-  // Promise.map(codeList, getWeekStockData, {
-  //   concurrency: CONCURRENCY
-  // });
+
+async function debugCode() {
+  await stockHistory.initDb(false);
+  await updateDashboard();
+  await updateTopGrow();
+  await updateTopGrowByDay(3);
+  await updateTopGrowByDay(20);
+  await updateTopGrowByDay(60);
+  await updateTopGrowByDay(120);
 };
+
 module.exports = {
   runCrawler, // Run for the first time init project
-  insertAll, // insert all stock
-  updateAll, // update all stock
-  calcIndicator, // calcIndicator
-  getAllStockData, // get stock data from beginning
+  getStockData, // get stock data from beginning
   getWeekStockData, // Fetch newest data
   getListCode, // Get all code list in whole maket
   runEveryday, // run Everyday job pull data from server and analysis
+  getLastStockData,
   debugCode
 };

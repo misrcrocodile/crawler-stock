@@ -60,6 +60,8 @@ StockHistory.prototype.updateLastestItem = function(data) {
   let queryStr;
   let logMsg;
 
+  if(data.length === 0) return;
+  
   // convert crawl data to db data
   data = toBulkObject(data);
   data = getLastBulkItem(data);
@@ -94,6 +96,9 @@ StockHistory.prototype.insertLastestItem = function(data) {
 StockHistory.prototype.insert = function(data) {
   let queryStr;
   let logMsg;
+
+  if(data.length === 0) return;
+  
   // convert crawl data to db data
   data = toBulkObject(data);
 
@@ -148,6 +153,18 @@ StockHistory.prototype.getTopGrow = function() {
 }
 StockHistory.prototype.getLastestBulk = function(data) {
   return getLastBulkItem(data);
+}
+
+StockHistory.prototype.getTopStockList = async function(day = 20, vol20 = 100000, imalow = 10) {
+  var strQuery = `select IMA.code, IMA.close, IMA.low as imalow, KAKO.low as kakolow, round(IMA.low - KAKO.low,2) as grow, round(100*(IMA.low - KAKO.low)/kako.low,2) as diff, vol20
+  from (select * from stock_history where time = (select max(time) from STOCK_HISTORY)) AS IMA
+  LEFT JOIN (select code, low from stock_history where time = (select min(mintime) from (select distinct time as mintime from stock_history order by time desc limit ${day}))) AS KAKO 
+  ON IMA.code = KAKO.code
+  WHERE vol20 > ${vol20} AND IMA.low > ${imalow} AND DIFF > 0
+  ORDER BY diff desc
+  LIMIT 40;`;
+  var data =  await executeSqlPull(strQuery, "error in getTopStockList");
+  return data.map(e => {return {code:e.code, close: e.close, grow:e.grow, percent: e.diff, volume: e.vol20}});
 }
 function deleteDbFile() {
   new Promise((resolve, reject) => {
@@ -417,7 +434,7 @@ const executeSqlPull = function(strQuery, errMsg) {
 const executeSqlPush = function(strQuery, logMsg, dataLen = 0) {
   const thisDb = this.db;
   return new Promise(function(resolve, reject) {
-    thisDb.run(strQuery, function(err, row) {
+    thisDb.run(strQuery, function(err, _row) {
       if (err) {
         var errMessage = logMsg + " ~> Error!!";
         console.log(errMessage);

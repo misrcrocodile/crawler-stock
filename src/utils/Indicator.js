@@ -129,7 +129,26 @@ const calculateVol20 = arr => {
 //     });
 // }
 
+// calculate indicator
+function calc(data) {
+    let macd = calculateMACD(data.close);
+  
+    data.ma9 = calculateMA(data.close, 9);
+    data.ma20 = calculateMA(data.close, 20);
+    data.ma200 = calculateMA(data.close, 200);
+  
+    data.macd_macd = macd.MACD;
+    data.macd_histogram = macd.histogram;
+    data.macd_signal = macd.signal;
+  
+    data.rsi14 = calculateRSI14(data.close);
+    data.mfi14 = calculateMFI14(data);
+    data.vol20 = calculateVol20(data.volume);
+    return data;
+  }
+
 module.exports = {
+    calc,
     calculateMACD,
     calculateMA,
     calculateRSI14,
