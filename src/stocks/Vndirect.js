@@ -279,7 +279,7 @@ async function updateTopGrow() {
 // TODO: rename function
 async function updateTopGrowByDay(day) {
   console.log('Running updateTopGrowByDay ...' + day);
-  const data = await stockHistory.getTopGrow(day);
+  const data = await stockHistory.getTopStockList(day);
   await Util.saveNote("topgrow" + day, JSON.stringify(data));
 }
 
