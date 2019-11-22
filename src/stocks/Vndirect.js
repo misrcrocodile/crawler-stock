@@ -6,7 +6,7 @@ const StockHistory = require("../models/StockHistory");
 const Util = require("../utils/Util");
 const fetch = require('../utils/crawler').fetchJSON;
 const URL_STOCK_CODE_LIST =
-  "https://price-as01.vndirect.com.vn/priceservice/secinfo/snapshot/q=floorCode:10,02,03";
+  "https://price-cmc-03.vndirect.com.vn/priceservice/secinfo/snapshot/q=floorCode:10,02,03";
 const URL_DAY_HISTORY =
   "https://dchart-api.vndirect.com.vn/dchart/history?resolution=D&symbol="; // parameter resolution, symbol, from, to
 const URL_STOCK_LIST =
