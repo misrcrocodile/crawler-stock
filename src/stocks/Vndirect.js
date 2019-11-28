@@ -4,17 +4,15 @@ const moment = require("moment");
 const Indicator = require("../utils/Indicator");
 const StockHistory = require("../models/StockHistory");
 const Util = require("../utils/Util");
-const fetch = require('../utils/crawler').fetchJSON;
+const fetch = require("../utils/crawler").fetchJSON;
 const URL_STOCK_CODE_LIST =
   "https://price-cmc-03.vndirect.com.vn/priceservice/secinfo/snapshot/q=floorCode:10,02,03";
 const URL_DAY_HISTORY =
   "https://dchart-api.vndirect.com.vn/dchart/history?resolution=D&symbol="; // parameter resolution, symbol, from, to
-const URL_STOCK_LIST =
-  "https://price-fpt-03.vndirect.com.vn/priceservice/secinfo/snapshot/q=codes:";
 const URL_STOCK_SNAPSHOT =
-  "https://price-as02.vndirect.com.vn/priceservice/secinfo/snapshot/q=codes:";
-const URL_INTRA_HISTORY =
-  "https://finfo-api.vndirect.com.vn/v3/stocks/intraday/history?symbols=FPT&sort=-time&limit=1000&fromDate=2019-09-23&toDate=2019-09-23&fields=symbol,last,lastVol,time";
+  "https://price-fpt-03.vndirect.com.vn/priceservice/secinfo/snapshot/q=codes:";
+// const URL_INTRA_HISTORY =
+// "https://finfo-api.vndirect.com.vn/v3/stocks/intraday/history?symbols=FPT&sort=-time&limit=1000&fromDate=2019-09-23&toDate=2019-09-23&fields=symbol,last,lastVol,time";
 
 const HIGH_CONCURRENCY = 20;
 const LOW_CONCURRENCY = 20;
@@ -179,9 +177,9 @@ async function getDataAndUpdateIndicator(code) {
 
 // run only once when init project
 async function runCrawler() {
-  console.log('Run crawler ...')
+  console.log("Run crawler ...");
   var codeList = await getListCode();
-  var getStockDataMod = e => getStockData(e,0);
+  var getStockDataMod = e => getStockData(e, 0);
   // Creatting promise
   var allValue = await Promise.map(codeList, getStockDataMod, {
     concurrency: LOW_CONCURRENCY
@@ -189,7 +187,7 @@ async function runCrawler() {
 
   // Run promise
   var allIndicator = allValue.map(Indicator.calc).filter(e => e.length > 0);
-  
+
   var childPromise = Promise.map(
     allIndicator,
     stockHistory.insert.bind(stockHistory),
@@ -201,7 +199,7 @@ async function runCrawler() {
 }
 
 async function updateDashboard() {
-  console.log('Run updateDashboard ...');
+  console.log("Run updateDashboard ...");
   var row = await stockHistory.getSummaryEveryday(30);
   var tempData = {};
   var header = [];
@@ -271,28 +269,24 @@ async function updateDashboard() {
 }
 
 async function updateTopGrow() {
-  console.log('Running updateTopGrow ...')
+  console.log("Running updateTopGrow ...");
   const data = await stockHistory.getTopGrow();
   await Util.saveNote("topgrowdata", JSON.stringify(data));
 }
 
 // TODO: rename function
 async function updateTopGrowByDay(day) {
-  console.log('Running updateTopGrowByDay ...' + day);
+  console.log("Running updateTopGrowByDay ..." + day);
   const data = await stockHistory.getTopStockList(day);
   await Util.saveNote("topgrow" + day, JSON.stringify(data));
 }
 
 async function runEveryday() {
-
   if (!stockHistory.isExistDbFile()) {
-
     console.log("Have no database file. Create new one!");
     await stockHistory.initDb(true);
     await runCrawler();
-
-  }else{
-
+  } else {
     await stockHistory.initDb(false);
 
     try {
@@ -308,7 +302,7 @@ async function runEveryday() {
   await updateTopGrowByDay(20);
   await updateTopGrowByDay(60);
   await updateTopGrowByDay(120);
-  
+
   console.log("DONE RUN EVERY DAY");
 }
 
@@ -399,10 +393,12 @@ async function getToDayStockData() {
   }
 
   let errCodeList = Object.keys(snapshotErr);
-  let bulkArr = await Promise.map(errCodeList, getWeekStockData, {concurrency: LOW_CONCURRENCY});
-  
+  let bulkArr = await Promise.map(errCodeList, getWeekStockData, {
+    concurrency: LOW_CONCURRENCY
+  });
+
   buklArr = bulkArr.map(e => {
-    let bulk = stockHistory.getLastestBulk(e)
+    let bulk = stockHistory.getLastestBulk(e);
     let i = snapshotErr[bulk.code];
 
     snapshotArr[i] = {
@@ -436,15 +432,55 @@ async function getLastestTime() {
   return bulk.time;
 }
 
+async function updateDashboardDemo() {
+  console.log("Run updateDashboard demo ...");
+  var row = await stockHistory.getSummaryEveryday(30);
+  var tempData = {};
+  var header = [];
+  var dataContent = [];
+  var maxLen = 0;
+  var codeSet = new Set();
+  var returnData = [];
+  
+  
+  // Grouping the code with same time together
+  for (var i = 0; i < row.length; i++) {
+    if (!Array.isArray(tempData[row[i]["time"]])) {
+      tempData[row[i]["time"]] = [];
+    }
+    tempData[row[i]["time"]].push(row[i]);
+  }
+  
+  var lastkey = "";
+  for(key in tempData) {
+    lastKey = key;
+  }
+
+  returnData = tempData[lastKey].map(e => new Object({ code: e.code, data: [] }));
+
+  for (var key in tempData) {
+    var dayData = tempData[key].map(e => e.code);
+    var maxVal = returnData.length;
+    returnData.map(e => {
+      e.data.push(dayData.includes(e.code) ? maxVal - dayData.indexOf(e.code) : 0);
+    });
+  }
+  returnData = returnData.filter(e => {
+    var data = e.data;
+    var zeroCounter = 0;
+    for(var i = 0; i< data.length; i++) {
+      if(data[i] == 0) zeroCounter++;
+    }
+    if(zeroCounter > data.length/3) return true;
+    return false;
+  })
+  Util.saveNote("dashboarddata1", JSON.stringify({data:returnData, label: Object.keys(tempData)}));
+}
+
 async function debugCode() {
   await stockHistory.initDb(false);
-  await updateDashboard();
-  await updateTopGrow();
-  await updateTopGrowByDay(3);
-  await updateTopGrowByDay(20);
-  await updateTopGrowByDay(60);
-  await updateTopGrowByDay(120);
-};
+  await updateDashboardDemo();
+}
 
 module.exports = {
   runCrawler, // Run for the first time init project
