@@ -1,18 +1,21 @@
 const Promise = require("bluebird");
 const moment = require("moment");
-
+const curl = require('../utils/curl');
+const decode = require('../utils/decoder').decodeData;
 const Indicator = require("../utils/Indicator");
 const StockHistory = require("../models/StockHistory");
 const Util = require("../utils/Util");
 const fetch = require("../utils/crawler").fetchJSON;
-const URL_STOCK_CODE_LIST =
-  "https://price-cmc-03.vndirect.com.vn/priceservice/secinfo/snapshot/q=floorCode:10,02,03";
+const URL_STOCK_CODE_LIST = [
+  "https://price-api.vndirect.com.vn/stocks/snapshot?floorCode=10",
+  "https://price-api.vndirect.com.vn/stocks/snapshot?floorCode=02",
+  "https://price-api.vndirect.com.vn/stocks/snapshot?floorCode=03"
+]
 const URL_DAY_HISTORY =
   "https://dchart-api.vndirect.com.vn/dchart/history?resolution=D&symbol="; // parameter resolution, symbol, from, to
 const URL_STOCK_SNAPSHOT =
   "https://price-fpt-03.vndirect.com.vn/priceservice/secinfo/snapshot/q=codes:";
-// const URL_INTRA_HISTORY =
-// "https://finfo-api.vndirect.com.vn/v3/stocks/intraday/history?symbols=FPT&sort=-time&limit=1000&fromDate=2019-09-23&toDate=2019-09-23&fields=symbol,last,lastVol,time";
+
 
 const HIGH_CONCURRENCY = 20;
 const LOW_CONCURRENCY = 20;
@@ -22,19 +25,18 @@ let stockHistory = new StockHistory(false);
 
 // Get all stock code list of the whole market
 async function getListCode() {
-  var codeList = [];
-
+  var returnData = [];
+  
   // Getting data
-  var data = await Util.fetchGet(URL_STOCK_CODE_LIST);
+  var data = await Promise.map(URL_STOCK_CODE_LIST, curl, {
+      concurrency: HIGH_CONCURRENCY
+  });
+  data = data.map(e => returnData = returnData.concat(JSON.parse(e)));
 
-  // Executing data
-  for (var key in data) {
-    for (var i = 0; i < data[key].length; i++) {
-      codeList.push(data[key][i].split("|")[3]);
-    }
-  }
-
-  return codeList;
+  return returnData
+            .map(e => decode(e))
+            .map(e =>e[1])
+            .filter(e=> e.length === 3);
 }
 
 // get the newest stock data
@@ -480,6 +482,8 @@ async function updateDashboardDemo() {
 async function debugCode() {
   await stockHistory.initDb(false);
   await updateDashboardDemo();
+  // var an = await getListCode();
+  // console.log(an);
 }
 
 module.exports = {
