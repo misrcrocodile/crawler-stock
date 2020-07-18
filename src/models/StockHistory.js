@@ -1,9 +1,23 @@
-
-const fs = require("fs");
 const Promise = require("bluebird");
-const sqlite3 = require("./../utils/adapter");
-const Util = require('./../utils/Util');
-const SQLITE3_PATH = "./stock.db";
+const mysql   = require('mysql');
+require('dotenv').config();
+const dbInfo = {
+  user: process.env.MYSQL_USER,
+  host: process.env.MYSQL_HOST,
+  database: process.env.MYSQL_DATABASE,
+  password: process.env.MYSQL_PASSWORD,
+  port: process.env.MYSQL_PORT
+};
+const connection = mysql.createConnection(dbInfo);
+ 
+connection.connect((err) => {
+  if(!err)
+      console.log('Database is connected!');
+  else
+      console.log('Database not connected! : '+ JSON.stringify(err, undefined,2));
+      console.log('Database Info:', dbInfo);
+  });
+
 const PROPERTY_LIST = [
   "high",
   "low",
@@ -21,50 +35,20 @@ const PROPERTY_LIST = [
   "vol20"
 ];
 
-// CONSTRUCTOR
-var StockHistory = function(isInitDbFile = false) {
-  if(isInitDbFile) {
-    initDb();
-  }
-};
-
-StockHistory.prototype.isExistDbFile = function() {
-  return Util.fileIsExists(SQLITE3_PATH);
-}
-StockHistory.prototype.initDb = function(e) {
-  return initDb(e);
-}
-
-StockHistory.prototype.reInitDb = function() {
-  return reInitDb();
-}
-
-/**
- * Delete all record of table
- */
-StockHistory.prototype.deleteAll = function() {
-  // query string
-  var strQuery = `DELETE FROM STOCK_HISTORY;`;
-  
-  // Execute sql
-  return executeSqlPush(strQuery, 'Delete all from stock_history');
-};
-
-// ok
-StockHistory.prototype.get = function(code) {
+const get = function(code) {
   var strQuery = `SELECT * FROM STOCK_HISTORY WHERE code = "${code}" order by time;`;
-  return executeSqlPull(strQuery, "Can't any record. code=" + code);
+  return runQuery(strQuery, "Can't any record. code=" + code);
 };
 
-StockHistory.prototype.updateLastestItem = function(data) {
+const updateLastestItem = function(data) {
   let queryStr;
   let logMsg;
 
   if(data.length === 0) return;
   
   // convert crawl data to db data
-  data = toBulkObject(data);
-  data = getLastBulkItem(data);
+  data = toCrawlerObject(data);
+  data = toNewestDbObject(data);
   
   // create query string
   queryStr = getUpdateString(data);
@@ -72,16 +56,20 @@ StockHistory.prototype.updateLastestItem = function(data) {
   // write log
   logMsg = "Update lastest Data: " + data.code + " into Stock_HISTORY: size = 1";
   
-  return executeSqlPush(queryStr, logMsg);
+  return upsert(queryStr, logMsg);
 };
 
-StockHistory.prototype.insertLastestItem = function(data) {
+/**
+ * Inserting newest item to database
+ * @param {Object} data Crawler's data {code:..., high:[], low:[], ...}
+ */
+const insertLastestItem = function(data) {
   let queryStr;
   let logMsg;
 
   // convert crawl data to db data
-  data = toBulkObject(data);
-  data = getLastBulkItem(data);
+  data = toCrawlerObject(data);
+  data = toNewestDbObject(data);
   
   // create query string
   queryStr = getInsertDistinceString(data);
@@ -89,18 +77,21 @@ StockHistory.prototype.insertLastestItem = function(data) {
   // write log
   logMsg = "Insert lastest Data: " + data.code + " into Stock_HISTORY: size = 1";
   
-  return executeSqlPush(queryStr, logMsg);
+  return upsert(queryStr, logMsg);
 };
 
-
-StockHistory.prototype.insert = function(data) {
+/**
+ * Inserting database's Object to database
+ * @param {Object} data database's object want to insert 
+ */
+const insert = function(data) {
   let queryStr;
   let logMsg;
 
   if(data.length === 0) return;
   
   // convert crawl data to db data
-  data = toBulkObject(data);
+  data = toCrawlerObject(data);
 
   // create query string
   queryStr = getInsertString(data);
@@ -108,109 +99,115 @@ StockHistory.prototype.insert = function(data) {
   // write log
   logMsg = "Insert " + data.code + " into Stock_HISTORY: size=" + data.length;
   
-  return executeSqlPush(queryStr, logMsg, data.length);
+  return upsert(queryStr, logMsg, data.length);
 };
 
-StockHistory.prototype.getSummaryEveryday = function(limitTime) {
+/**
+ * Get statistic of whole stock market by using MACD Indicator
+ * @param {Integer} limitTime number of day will be output to report
+ */
+const getMACDDashboard = function(limitTime) {
   
-  var strQuery = `SELECT code, time, open, macd_histogram, volume,(close - open) AS grow 
-     FROM STOCK_HISTORY 
-     WHERE open > 15 
-      AND macd_histogram > -2 
-      AND volume > 500000 
-      AND time >= (SELECT MIN(mintime) FROM (SELECT DISTINCT time AS mintime FROM STOCK_HISTORY ORDER BY time DESC LIMIT ${limitTime}))
-     ORDER BY time, macd_histogram DESC;`;
+  var strQuery = `SELECT SH.code, SH.time, SH.open, SH.macd_histogram, SH.volume, (SH.close - SH.open) AS grow 
+     FROM STOCK_HISTORY AS SH,
+     (SELECT MIN(time) as mintime FROM (SELECT DISTINCT time FROM STOCK_HISTORY ORDER BY time DESC LIMIT ${limitTime}) as tempTime) as kako
+     WHERE SH.open > 15 
+      AND SH.macd_histogram > -2 
+      AND SH.volume > 500000 
+      AND SH.time >= kako.mintime
+     ORDER BY SH.time, SH.macd_histogram DESC;`;
 
-  return executeSqlPull(strQuery, 'error in getting summary everyday');
+  return runQuery(strQuery, 'error in getting summary everyday');
 };
 
-
-StockHistory.prototype.isExistDataByTime = function(time) {
+/**
+ * Check data in database whether it exists or not
+ * @param {Integer} time Check time point
+ */
+const isExistDataByTime = function(time) {
   var strQuery = `SELECT * FROM STOCK_HISTORY WHERE time = ${time} LIMIT 1;`
-  return executeSqlPull(strQuery,"").then(() => {
+  return runQuery(strQuery,"").then(() => {
     return true;
   }).catch(()=> {
     return false;
   });
 }
 
-StockHistory.prototype.toBulkObject = function(data) {
-  return toBulkObject(data);
-};
-
-StockHistory.prototype.toArray = function(data) {
-  return toArray(data);
-};
-
-StockHistory.prototype.getTopGrow = function() {
-  var strQuery = `select code, close, round(close-open,2) as grow, round((close-open)*100/open,2) || '%' as percent, volume from Stock_history
-  where time = (select max(time) from stock_history)
-  and volume > 200000
-  and close > 10
-  order by percent desc
-  limit 50`;
-  return executeSqlPull(strQuery, 'error in getting topGrow everyday');
+/**
+ * Getting top grow stock intraday
+ */
+const getTodayTopGrow = function() {
+  var strQuery = `SELECT SH.code, SH.close, round(SH.close - SH.open, 2) as grow, round((SH.close - SH.open) * 100 / SH.open,2) || '%' as percent, SH.volume 
+  FROM STOCK_HISTORY as SH,
+    (SELECT MAX(time) AS time FROM STOCK_HISTORY) AS IMA
+  WHERE SH.time = IMA.time
+  AND SH.volume > 200000
+  AND SH.close > 10
+  ORDER BY percent DESC
+  LIMIT 50`;
+  return runQuery(strQuery, 'error in getting topGrow everyday');
 }
-StockHistory.prototype.getLastestBulk = function(data) {
-  return getLastBulkItem(data);
-}
-
-StockHistory.prototype.getTopStockList = async function(day = 20, vol20 = 100000, imalow = 10) {
-  var strQuery = `select IMA.code, IMA.close, IMA.low as imalow, KAKO.low as kakolow, round(IMA.low - KAKO.low,2) as grow, round(100*(IMA.low - KAKO.low)/kako.low,2) as diff, vol20
-  from (select * from stock_history where time = (select max(time) from STOCK_HISTORY)) AS IMA
-  LEFT JOIN (select code, low from stock_history where time = (select min(mintime) from (select distinct time as mintime from stock_history order by time desc limit ${day}))) AS KAKO 
-  ON IMA.code = KAKO.code
-  WHERE vol20 > ${vol20} AND IMA.low > ${imalow} AND DIFF > 0
-  ORDER BY diff desc
+/**
+ * Getting top stock today by using past data via vol20, low_price
+ * @param {Integer} day number of day before today. Using for compare stock up or down. 
+ * @param {Integer} vol20 averange volumn in 20 days
+ * @param {integer} imalow low_price today
+ */
+const getTopStockList = async function(day = 20, vol20 = 100000, imalow = 10) {
+  let strQuery = `WITH
+  IMA AS (
+    SELECT SH.* 
+    FROM STOCK_HISTORY AS SH,
+      (SELECT MAX(time) AS time FROM STOCK_HISTORY) AS IMA_TIME
+      WHERE SH.time = IMA_TIME.time),
+  KAKO AS (
+    SELECT SH.code, SH.low 
+    FROM STOCK_HISTORY AS SH,
+      ( SELECT MIN(mintime) AS time 
+      FROM ( SELECT DISTINCT time AS mintime 
+        FROM STOCK_HISTORY 
+        ORDER BY time DESC 
+        LIMIT ${day}) AS TEMP_TIME
+      ) AS KAKO_TIME
+    WHERE SH.time = KAKO_TIME.time
+  ),
+  RESULT AS(
+    SELECT IMA.code, IMA.close, IMA.low AS imalow, KAKO.low AS kakolow, ROUND(IMA.low - KAKO.low, 2) AS grow, IMA.vol20, (ROUND(100 * (IMA.low - KAKO.low) / KAKO.low, 2)) AS diff
+    FROM IMA
+    LEFT JOIN KAKO 
+    ON IMA.code = KAKO.code
+  )
+  SELECT * FROM RESULT
+  WHERE vol20 > ${vol20} AND imalow > ${imalow} AND diff > 0
+  ORDER BY diff DESC
   LIMIT 40;`;
-  var data =  await executeSqlPull(strQuery, "error in getTopStockList");
+
+  var data =  await runQuery(strQuery, "error in getTopStockList");
   return data.map(e => {return {code:e.code, close: e.close, grow:e.grow, percent: e.diff, volume: e.vol20}});
 }
-function deleteDbFile() {
-  new Promise((resolve, reject) => {
-    // delete file named SQLITE3_PATH
-    fs.unlink(SQLITE3_PATH, function(err) {
 
-      if (err) {
-        console.log("Have no file to delete.");
-        reject({ err: "Have no file to delete." });
-      }
-
-      // if no error, file has been deleted successfully
-      console.log({ msg: "File deleted!" });
-      resolve("File deleted!");
-    });
-  });
-}
-
-async function initDb(isDeleteDbFile = false) {
-  // delete db file
-  if (isDeleteDbFile) {
-    await deleteDbFile();
+/**
+ * Check STOCK_HISTORY database is blank or not.
+ * Using to make decision whether data update or insert
+ */
+const isBlankDatabase = async function() {
+  let strQuery = `SELECT COUNT(*) AS countsize FROM STOCK_HISTORY;`;
+  let data = await runQuery(strQuery,"");
+  if(data.length > 0 && data[0].countsize > 0){
+    return false;
   }
-
-  // Init sqlite
-  this.db = sqlite3.init(SQLITE3_PATH);
-
-  // If db file is deleted, create new one
-  if(isDeleteDbFile) {
-    createStockHistoryTable(db);
-  }
-}
-
-async function reInitDb() {
-  return await initDb(false);
+  return true;
 }
 
 /**
  * Convert Array[object] to bulk object
  *
  * @param {Array[Object]} objArr Object:{code, time, high, low, ...}
- * @return {BulkObject} retObj that have many array inside
+ * @return {CrawlerObject} retObj that have many array inside
  *                      Object:{code: 'FPT', length, time[], high[], low[], ...}
  * function convert2DataArray(data) {
  */
-function toArray(objArr) {
+const toArray = function(objArr) {
   // Create object
   let bulkObj = { code: objArr[0].code, time: [] };
   PROPERTY_LIST.map(e => (bulkObj[e] = []));
@@ -231,10 +228,10 @@ function toArray(objArr) {
 /**
  * Add missing property in Bulk Object
  *
- * @param {BulkObject} Bulk Object: {code, length, time[], high[], low[], ...}
- * @return {BulkObject} Bulk Object: {code, length, time[], high[], low[], ...}
+ * @param {CrawlerObject} Bulk Object: {code, length, time[], high[], low[], ...}
+ * @return {CrawlerObject} Bulk Object: {code, length, time[], high[], low[], ...}
  */
-function toBulkObject(bulkObj) {
+const toCrawlerObject = function(bulkObj) {
   let retObj = {};
 
   // Create blank Bulk Obj
@@ -250,9 +247,9 @@ function toBulkObject(bulkObj) {
 
 /**
  * Convert bulk object to object by getting the lastest item of bulk object
- * @param {BulkObject} data
+ * @param {CrawlerObject} data
  */
-function getLastBulkItem(bulkObj) {
+const toNewestDbObject = function(bulkObj) {
   let retObj = {};
 
   // Looping each prop of bulkObj
@@ -263,26 +260,6 @@ function getLastBulkItem(bulkObj) {
   }
 
   return retObj;
-}
-
-/**
- * Get create table "STOCK_HISTORY" string
- * @return queryStr "CREATE TABLE .... "
- */
-function getCreateTableString() {
-  let queryStr =
-    "CREATE TABLE `STOCK_HISTORY` (" +
-    "`code` TEXT NOT NULL," +
-    "`time` NUMERIC NOT NULL,";
-
-  // Add more property to table
-  for (var i = 0; i < PROPERTY_LIST.length; i++) {
-    queryStr += "`" + PROPERTY_LIST[i] + "` REAL,";
-  }
-  // Add primary key
-  queryStr += "PRIMARY KEY(`code`,`time`)" + ") WITHOUT ROWID;";
-
-  return queryStr;
 }
 
 /**
@@ -334,7 +311,6 @@ function getInsertString(arrObj) {
 
 function getInsertDistinceString(arrObj) {
   let queryStr = "INSERT INTO STOCK_HISTORY ( code, time, ";
-  let valueArr = [];
   let propArr = [];
   
   PROPERTY_LIST.map(e => propArr.push(arrObj[e]));
@@ -366,81 +342,35 @@ function getUpdateString(data) {
 }
 
 /**
- * Init STOCK_HISTORY table
- * @param {pDb} pDb
- */
-function createStockHistoryTable(pDb) {
-  let queryStr = getCreateTableString();
-
-  // Logging
-  console.log("Create STOCK_HISTORY table if not exists.");
-  console.log("SQL query: ", queryStr);
-
-  // Execute sql
-  pDb.run(queryStr, function(err, _res) {
-    if (err) {
-      console.log("Error on create table STOCK_HISTORY", err);
-    } else {
-      console.log("Table STOCK_HISTORY is created if not exists!");
-    }
-  });
-}
-
-/**
  * Execute SQL query
  * @param {String} strQuery execute query string 
  * @param {String} errMsg error message
  */
-const executeSql = function(strQuery, errMsg) {
-  const thisDb = this.db;
+const runQuery = function(strQuery, errMsg) {
   return new Promise(function(resolve, reject) {
-    thisDb.all(strQuery, function(err, row) {
-      if (err) {
-        reject({ err: err });
-      } else {
-        if (row.length == 0) {
+    connection.query(strQuery, function (error, results, _fields) {
+      if (error) {
+        reject({ err: error });
+      }else {
+        if (results.length == 0) {
           reject({ err: errMsg });
         } else {
-          resolve(row);
+          resolve(results);
         }
       }
     });
   });
 };
 
-/**
- * Execute SQL query
- * @param {String} strQuery execute query string 
- * @param {String} errMsg error message
- */
-const executeSqlPull = function(strQuery, errMsg) {
-  const thisDb = this.db;
+const upsert = function(strQuery, logMsg, dataLen = 0) {
   return new Promise(function(resolve, reject) {
-    thisDb.all(strQuery, function(err, row) {
-      if (err) {
-        reject({ err: err });
-      } else {
-        if (row.length == 0) {
-          reject({ err: errMsg });
-        } else {
-          resolve(row);
-        }
-      }
-    });
-  });
-};
-
-
-const executeSqlPush = function(strQuery, logMsg, dataLen = 0) {
-  const thisDb = this.db;
-  return new Promise(function(resolve, reject) {
-    thisDb.run(strQuery, function(err, _row) {
-      if (err) {
+    connection.query(strQuery, function (error, results, _fields) {
+      if (error) {
         var errMessage = logMsg + " ~> Error!!";
         console.log(errMessage);
         console.log("SQL query: ", strQuery.substring(0, 400), "...");
-        reject({ err: err });
-      } else {
+        reject({ err: error });
+      }else {
         console.log(logMsg + " ~> Done!!");
         resolve({ row_num: dataLen });
       }
@@ -448,5 +378,17 @@ const executeSqlPush = function(strQuery, logMsg, dataLen = 0) {
   });
 };
 
-
-module.exports = StockHistory;
+module.exports = {
+  toArray,
+  get,
+  updateLastestItem,
+  insertLastestItem,
+  insert,
+  getMACDDashboard,
+  isExistDataByTime,
+  toCrawlerObject,
+  getTodayTopGrow,
+  getTopStockList,
+  toNewestDbObject,
+  isBlankDatabase
+};

@@ -99,3 +99,74 @@ and volume > 200000
 and close > 10
 order by percent desc
 limit 50
+
+
+
+SELECT SH.code, SH.time, SH.open, SH.macd_histogram, SH.volume, (SH.close - SH.open) AS grow 
+FROM STOCK_HISTORY as SH,
+(SELECT MIN(mintime) as time FROM (SELECT DISTINCT time AS mintime FROM STOCK_HISTORY ORDER BY time DESC LIMIT 30) as temp) AS kako
+WHERE open > 15 
+AND SH.macd_histogram > -2 
+AND SH.volume > 500000 
+AND SH.time >= kako.time
+ORDER BY SH.time, SH.macd_histogram DESC;
+
+SELECT MIN(mintime) FROM (SELECT DISTINCT time AS mintime FROM STOCK_HISTORY ORDER BY time DESC LIMIT 30)
+
+WITH
+  IMA AS (
+    SELECT SH.* 
+    FROM STOCK_HISTORY AS SH,
+      (SELECT MAX(time) AS time FROM STOCK_HISTORY) AS IMA_TIME
+      WHERE SH.time = IMA_TIME.time),
+  KAKO AS (
+    SELECT SH.code, SH.low 
+    FROM STOCK_HISTORY AS SH,
+      ( SELECT MIN(mintime) AS time 
+      FROM ( SELECT DISTINCT time AS mintime 
+        FROM STOCK_HISTORY 
+        ORDER BY time DESC 
+        LIMIT 30) AS TEMP_TIME
+      ) AS KAKO_TIME
+    WHERE SH.time = KAKO_TIME.time
+  )
+SELECT IMA.code, IMA.close, IMA.low AS imalow, KAKO.low AS kakolow, ROUND(IMA.low - KAKO.low, 2) AS grow, ROUND(100 * (IMA.low - KAKO.low) / KAKO.low, 2) AS diff, IMA.vol20
+FROM IMA
+LEFT JOIN KAKO 
+ON IMA.code = KAKO.code
+WHERE vol20 > 100000 AND IMA.low > 15 AND diff > 0
+ORDER BY diff DESC
+LIMIT 40;
+
+--///////////////////////////////
+-- MYSQL ////////////////////////
+--///////////////////////////////
+
+-- getTopStockList function
+WITH
+  IMA AS (
+    SELECT SH.* 
+    FROM STOCK_HISTORY AS SH,
+      (SELECT MAX(time) AS time FROM STOCK_HISTORY) AS IMA_TIME
+      WHERE SH.time = IMA_TIME.time),
+  KAKO AS (
+    SELECT SH.code, SH.low 
+    FROM STOCK_HISTORY AS SH,
+      ( SELECT MIN(mintime) AS time 
+      FROM ( SELECT DISTINCT time AS mintime 
+        FROM STOCK_HISTORY 
+        ORDER BY time DESC 
+        LIMIT 30) AS TEMP_TIME
+      ) AS KAKO_TIME
+    WHERE SH.time = KAKO_TIME.time
+  ),
+  RESULT AS(
+    SELECT IMA.code, IMA.close, IMA.low AS imalow, KAKO.low AS kakolow, ROUND(IMA.low - KAKO.low, 2) AS grow, IMA.vol20, (ROUND(100 * (IMA.low - KAKO.low) / KAKO.low, 2)) AS diff
+    FROM IMA
+    LEFT JOIN KAKO 
+    ON IMA.code = KAKO.code
+  )
+  SELECT * FROM RESULT
+  WHERE vol20 > 100000  AND imalow > 15 AND diff > 0
+  ORDER BY diff DESC
+  LIMIT 40;

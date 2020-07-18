@@ -2,8 +2,9 @@ const moment = require("moment");
 const Schedule = require("node-schedule");
 const VND = require("./src/stocks/Vndirect");
 
-// VND.debugCode();
-VND.runEveryday();
+
+VND.debug();
+//VND.runEveryday();
 // run job every day at 18:00
 Schedule.scheduleJob("20 * * * *", function() {
   // Setting time
@@ -28,6 +29,6 @@ Schedule.scheduleJob("20 * * * *", function() {
     console.log("Execute job at: ", moment().format("MMMM Do YYYY, h:mm:ss a"));
 
     // VND.debugCode();
-    VND.runEveryday();
+    VND.exec();
   }
 });
