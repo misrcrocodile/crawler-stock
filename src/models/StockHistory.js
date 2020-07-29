@@ -137,7 +137,7 @@ const isExistDataByTime = function(time) {
  * Getting top grow stock intraday
  */
 const getTodayTopGrow = function() {
-  var strQuery = `SELECT SH.code, SH.close, round(SH.close - SH.open, 2) as grow, round((SH.close - SH.open) * 100 / SH.open,2) || '%' as percent, SH.volume 
+  var strQuery = `SELECT SH.code, SH.close, round(SH.close - SH.open, 2) as grow, CONCAT(round(((SH.close - SH.open) *100)/ SH.open ,2), "%") as percent, SH.volume 
   FROM STOCK_HISTORY as SH,
     (SELECT MAX(time) AS time FROM STOCK_HISTORY) AS IMA
   WHERE SH.time = IMA.time
