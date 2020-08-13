@@ -143,7 +143,7 @@ const getTodayTopGrow = function() {
   WHERE SH.time = IMA.time
   AND SH.volume > 200000
   AND SH.close > 10
-  ORDER BY grow DESC
+  ORDER BY percent DESC
   LIMIT 50`;
   return runQuery(strQuery, 'error in getting topGrow everyday');
 }
