@@ -1,3 +1,30 @@
 {
-  "git.ignoreLimitWarning": true
+  "workbench.iconTheme": "material-icon-theme",
+  "editor.renderWhitespace": "all",
+  "workbench.colorTheme": "Atom One Dark",
+  "editor.fontSize": 14,
+  "window.zoomLevel": 0,
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.wordWrap": "on",
+  "explorer.confirmDragAndDrop": false,
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "explorer.confirmDelete": false,
+  "editor.fontFamily": "Cascadia Code, Consolas",
+  "editor.lineHeight": 19,
+  "javascript.format.enable": false,
+  "files.exclude": {
+    // 下記のフォルダーは右のExplorerタブに表示しないように設定
+    "**/.git": true,
+    "**/.DS_Store": true,
+    "**/node_modules": true,
+    "node_modules": true,
+    "dist": true
+  },
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": true
+  },
+  "editor.formatOnSave": true // 保存した後、自動的にスタイルを綺麗にする。
 }
