@@ -33,12 +33,12 @@ async function exec() {
   }
 
   // Update Data
-  await updateMACDDashboard();
-  await updateTodayTopGrow();
-  await updateTopGrowStock(3);
-  await updateTopGrowStock(20);
-  await updateTopGrowStock(60);
-  await updateTopGrowStock(120);
+  // await updateMACDDashboard();
+  // await updateTodayTopGrow();
+  // await updateTopGrowStock(3);
+  // await updateTopGrowStock(20);
+  // await updateTopGrowStock(60);
+  // await updateTopGrowStock(120);
 
   console.timeEnd('Execute time');
   console.log('DONE RUN EVERY DAY!');
