@@ -1,19 +1,19 @@
-'use strict';
-const Promise = require('bluebird');
-const curl = require('../utils/curl');
-const fs = require('fs');
-const cheerio = require('cheerio');
-const sqlite3 = require('sqlite3').verbose();
-const VND = require('./Vndirect');
+"use strict";
+const Promise = require("bluebird");
+const curl = require("../utils/curl");
+const fs = require("fs");
+const cheerio = require("cheerio");
+const sqlite3 = require("sqlite3").verbose();
+const VND = require("./Vndirect");
 
 const LOW_CONCURRENCY = 10;
 
-const db = new sqlite3.Database('./vietstock.db', (err) => {
+const db = new sqlite3.Database("./vietstock.db", (err) => {
   if (err) {
     return console.error(err.message);
   }
 
-  console.log('Connected to the in-memory SQlite database.');
+  console.log("Connected to the in-memory SQlite database.");
 });
 
 function selectCommand(query) {
@@ -28,20 +28,20 @@ function selectCommand(query) {
 }
 function writeToFile(listObj, filename) {
   let financeinfoProperty = [
-    'StockCode',
-    'ReportTermType',
-    'YearPeriod',
-    'TermCode',
-    'ReportComponentNameEn',
-    'NameEn',
-    'UnitEn',
-    'Value',
-    'PeriodBegin',
-    'PeriodEnd',
-    'ReportComponentName',
-    'Name',
-    'Unit',
-    'page',
+    "StockCode",
+    "ReportTermType",
+    "YearPeriod",
+    "TermCode",
+    "ReportComponentNameEn",
+    "NameEn",
+    "UnitEn",
+    "Value",
+    "PeriodBegin",
+    "PeriodEnd",
+    "ReportComponentName",
+    "Name",
+    "Unit",
+    "page",
   ];
   let data = [
     `"StockCode","ReportTermType","YearPeriod","TermCode","ReportComponentNameEn","NameEn","UnitEn","Value","PeriodBegin","PeriodEnd","ReportComponentName","Name","Unit","page"`,
@@ -51,9 +51,9 @@ function writeToFile(listObj, filename) {
     for (let j = 0; j < financeinfoProperty.length; j++) {
       strList.push(`"${listObj[i][financeinfoProperty[j]]}"`);
     }
-    data.push(strList.join(','));
+    data.push(strList.join(","));
   }
-  fs.writeFile(filename, data.join('\n'), 'utf8', (err) => {
+  fs.writeFile(filename, data.join("\n"), "utf8", (err) => {
     if (err) {
       console.error(err);
       return;
@@ -85,12 +85,16 @@ async function getListCode() {
 async function getCodeInfo(code) {
   const getCodeDetail = function (stockCode) {
     return new Promise((resolve, reject) => {
-      db.all(`SELECT DISTINCT * FROM tradinginfo WHERE StockCode = "${stockCode}"`, [], (err, rows) => {
-        if (err) {
-          reject(err);
+      db.all(
+        `SELECT DISTINCT * FROM tradinginfo WHERE StockCode = "${stockCode}"`,
+        [],
+        (err, rows) => {
+          if (err) {
+            reject(err);
+          }
+          resolve(rows);
         }
-        resolve(rows);
-      });
+      );
     });
   };
 
@@ -103,11 +107,11 @@ async function getCodeInfo(code) {
  * @returns {}
  */
 async function getUrlByCode(code) {
-  console.log('Getting code = ', code);
+  console.log("Getting url by code: ", code);
   const url = `"https://finance.vietstock.vn/search/${code}/3"`;
   let res = await curl(url);
   let data = JSON.parse(res).data;
-  return { StockCode: code, url: data.split('\n')[0].split('|')[2] };
+  return { StockCode: code, url: data.split("\n")[0].split("|")[2] };
 }
 
 async function insertUrlToDb() {
@@ -115,25 +119,25 @@ async function insertUrlToDb() {
   let data = await Promise.map(codeList, getUrlByCode, {
     concurrency: LOW_CONCURRENCY,
   });
-  let dataQuery = 'INSERT INTO tradinginfo (StockCode, url) VALUES ';
+  let dataQuery = "INSERT INTO tradinginfo (StockCode, url) VALUES ";
   let values = [];
 
   for (var i = 0; i < data.length; i++) {
     values.push(`('${data[i].StockCode}','${data[i].url}')`);
   }
-  dataQuery += values.join(',');
+  dataQuery += values.join(",");
   db.run(dataQuery);
 }
 
 async function updateBasicInfo() {
   let codeList = await getListCode();
   const getBasicInfo = async function (code) {
-    console.log('Get basic info code = ', code);
+    console.log("Get basic info code: ", code);
     const dataToken =
-      'x3WwXBb4SXPmBzGYDMVSLDzKJEqMD9yvsMiN2IL4d2E6H29tzcCHrvOOaFsSDvGH9k1VnfrVpkpwWaCuRi4KgJJQDC5Y1FCOIfcGnd4kmNA1';
+      "x3WwXBb4SXPmBzGYDMVSLDzKJEqMD9yvsMiN2IL4d2E6H29tzcCHrvOOaFsSDvGH9k1VnfrVpkpwWaCuRi4KgJJQDC5Y1FCOIfcGnd4kmNA1";
     const cookieToken =
-      '5y3G3Fvcb9o2vXWDYPlrS9t17G0t44uML6m6X2y5aa58JugI2Vn6LIdZODm43J_prjtCaFLb1G7IfnASVJhlNDufZbmQpyzSXiRzqBrLQzs1';
-    const req = `'https://finance.vietstock.vn/company/tradinginfo' -H 'Cookie: __RequestVerificationToken=${cookieToken}' --data-raw 'code=${code}&s=0&t=&__RequestVerificationToken=${dataToken}' --compressed`;
+      "5y3G3Fvcb9o2vXWDYPlrS9t17G0t44uML6m6X2y5aa58JugI2Vn6LIdZODm43J_prjtCaFLb1G7IfnASVJhlNDufZbmQpyzSXiRzqBrLQzs1";
+    const req = `"https://finance.vietstock.vn/company/tradinginfo" -H "Cookie:__RequestVerificationToken=${cookieToken}" --data-raw "code=${code}&s=0&t=&__RequestVerificationToken=${dataToken}" --compressed`;
     const res = await curl(req);
     let data = JSON.parse(res);
     data.updatedAt = Date.now();
@@ -149,38 +153,38 @@ async function updateBasicInfo() {
     let queryStr = `UPDATE tradinginfo SET `;
     let arr = [];
     let props = [
-      'LastPrice',
-      'KLCPLH',
-      'KLCPNY',
-      'TotalVol',
-      'MarketCapital',
-      'OwnedRatio',
-      'Dividend',
-      'Max52W',
-      'Min52W',
-      'Vol52W',
-      'OutstandingBuy',
-      'OutstandingSell',
-      'EPS',
-      'PE',
-      'FEPS',
-      'BVPS',
-      'PB',
-      'updatedAt',
+      "LastPrice",
+      "KLCPLH",
+      "KLCPNY",
+      "TotalVol",
+      "MarketCapital",
+      "OwnedRatio",
+      "Dividend",
+      "Max52W",
+      "Min52W",
+      "Vol52W",
+      "OutstandingBuy",
+      "OutstandingSell",
+      "EPS",
+      "PE",
+      "FEPS",
+      "BVPS",
+      "PB",
+      "updatedAt",
     ];
     props.map((prop) => arr.push(`${prop} = ${item[prop]}`));
-    queryStr += arr.join(',');
+    queryStr += arr.join(",");
     queryStr += ` WHERE StockCode = "${item.StockCode}";`;
     return queryStr;
   };
 
   // update data
-  db.run('PRAGMA synchronous=OFF');
-  db.run('BEGIN TRANSACTION');
+  db.run("PRAGMA synchronous=OFF");
+  db.run("BEGIN TRANSACTION");
   for (let i = 0; i < data.length; i++) {
     db.run(getSql(data[i]));
   }
-  db.run('COMMIT');
+  db.run("COMMIT");
 }
 
 async function updateAllIndustryName() {
@@ -188,12 +192,12 @@ async function updateAllIndustryName() {
     const stockInfo = await getCodeInfo(code);
     const data = await curl(`"${stockInfo.url}"`);
     const $ = cheerio.load(data);
-    let an = $('.title-x > a');
+    let an = $(".title-x > a");
     let ret = [];
 
     for (let i = 0; i < an.length; i++) {
       ret.push({
-        link: 'https://finance.vietstock.vn' + an[i].attribs.href,
+        link: "https://finance.vietstock.vn" + an[i].attribs.href,
         industryName: an[i].children[0].data,
       });
     }
@@ -201,35 +205,39 @@ async function updateAllIndustryName() {
   };
 
   const updateIndustryName = async function (code) {
-    console.log('Update Industry name code = ', code);
+    console.log("Update Industry name code: ", code);
     let data = await getIndustryName(code);
     data = JSON.stringify(data);
     const queryStr = `UPDATE tradinginfo SET industryName = '${data}' WHERE StockCode = "${code}";`;
     db.run(queryStr);
   };
 
-  db.run('BEGIN TRANSACTION');
+  db.run("BEGIN TRANSACTION");
   const codeList = VND.getListCode();
   await Promise.map(codeList, updateIndustryName, {
     concurrency: LOW_CONCURRENCY,
   });
-  db.run('COMMIT');
+  db.run("COMMIT");
 }
 
-async function updateFinanceinfo() {
+async function updateFinanceinfo(flag) {
   let listCode = await VND.getListCode();
-  let existCode = await getExistsListCode();
-  let listCodeArray = [];
-  let minLength = 30;
+  if (flag) {
+    let existCode = await getExistsListCode();
+    let listCodeArray = [];
+    let minLength = 30;
 
-  listCode = listCode.filter((el) => !existCode.includes(el));
-  while (listCode.length > minLength) {
-    let temp = listCode.splice(0, minLength);
-    listCodeArray.push(temp);
-  }
-  listCodeArray.push(listCode);
-  for (let i = 0; i < listCodeArray.length; i++) {
-    await updateFinanceinfoByPage(listCodeArray[i]);
+    listCode = listCode.filter((el) => !existCode.includes(el));
+    while (listCode.length > minLength) {
+      let temp = listCode.splice(0, minLength);
+      listCodeArray.push(temp);
+    }
+    listCodeArray.push(listCode);
+    for (let i = 0; i < listCodeArray.length; i++) {
+      await updateFinanceinfoByPage(listCodeArray[i]);
+    }
+  } else {
+    await updateFinanceinfoByPage(listCode);
   }
 }
 /**
@@ -244,12 +252,16 @@ async function updateFinanceinfoByPage(listCode) {
   const getFinanceInfo = async function (code, termType) {
     let arr = [];
     for (let i = 1; i < 100; i++) {
-      console.log(`getFinanceInfo: code = ${code}, page i = ${i}, termType = ${termType === 1 ? 'year' : 'quarter'}`);
+      console.log(
+        `getFinanceInfo: code = ${code}, page i = ${i}, termType = ${
+          termType === 1 ? "year" : "quarter"
+        }`
+      );
       const cookieToken =
-        '5y3G3Fvcb9o2vXWDYPlrS9t17G0t44uML6m6X2y5aa58JugI2Vn6LIdZODm43J_prjtCaFLb1G7IfnASVJhlNDufZbmQpyzSXiRzqBrLQzs1';
+        "5y3G3Fvcb9o2vXWDYPlrS9t17G0t44uML6m6X2y5aa58JugI2Vn6LIdZODm43J_prjtCaFLb1G7IfnASVJhlNDufZbmQpyzSXiRzqBrLQzs1";
       const dataToken =
-        'ILPAP3DRzSmGJrtNK4nfINNJ6hyd9bp4TfNeku5HHMGD5oto-rTv7Oa5s9I2x9UIcHUNG5wdXXz0_PyYVUOPeQLziLNfNgQhm48QglU9qJY1';
-      const url = `curl 'https://finance.vietstock.vn/data/financeinfo' -H 'Cookie:__RequestVerificationToken=${cookieToken}' --data-raw 'Code=${code}&Page=${i}&PageSize=4&ReportTermType=${termType}&ReportType=BCTQ&Unit=1000000&__RequestVerificationToken=${dataToken}'  --compressed`;
+        "ILPAP3DRzSmGJrtNK4nfINNJ6hyd9bp4TfNeku5HHMGD5oto-rTv7Oa5s9I2x9UIcHUNG5wdXXz0_PyYVUOPeQLziLNfNgQhm48QglU9qJY1";
+      const url = `curl "https://finance.vietstock.vn/data/financeinfo" -H "Cookie:__RequestVerificationToken=${cookieToken}" --data-raw "Code=${code}&Page=${i}&PageSize=4&ReportTermType=${termType}&ReportType=BCTQ&Unit=1000000&__RequestVerificationToken=${dataToken}"  --compressed`;
       let data = await curl(url);
       data = JSON.parse(data);
 
@@ -265,16 +277,16 @@ async function updateFinanceinfoByPage(listCode) {
           let item = block[k];
           let ret = {};
           ret.StockCode = code;
-          ret.ReportTermType = termType === 1 ? 'year' : 'quarter';
+          ret.ReportTermType = termType === 1 ? "year" : "quarter";
           ret.ReportComponentNameEn = item.ReportComponentNameEn;
           ret.NameEn = item.NameEn;
-          ret.UnitEn = item.UnitEn ? item.UnitEn : 'VND';
-          ret.Unit = item.Unit ? item.Unit : 'VNĐ';
+          ret.UnitEn = item.UnitEn ? item.UnitEn : "VND";
+          ret.Unit = item.Unit ? item.Unit : "VNĐ";
           ret.Name = item.Name;
           ret.ReportComponentName = item.ReportComponentName;
           for (let j = 0; j < data[0].length; j++) {
             let temp = clone(ret);
-            temp.Value = item['Value' + (j + 1)];
+            temp.Value = item["Value" + (j + 1)];
             temp.YearPeriod = data[0][j].YearPeriod;
             temp.TermCode = data[0][j].TermCode;
             temp.PeriodBegin = data[0][j].PeriodBegin;
@@ -288,12 +300,27 @@ async function updateFinanceinfoByPage(listCode) {
     return arr;
   };
 
-  db.run('BEGIN TRANSACTION');
+  const upsertToDB = (sqlData) => {
+    let sql = `INSERT INTO financeinfo(StockCode, ReportTermType, YearPeriod, TermCode, ReportComponentNameEn, NameEn, UnitEn, Value, PeriodBegin, PeriodEnd, ReportComponentName, Name, Unit) 
+    VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING;`;
+    return new Promise((resolve, reject) => {
+      db.run(sql, sqlData, function (err, rows) {
+        if (err) {
+          reject(err);
+        }
+        resolve(rows);
+      });
+    });
+  };
+
+  db.run("BEGIN TRANSACTION");
   for (let i = 0; i < listCode.length; i++) {
     let dataYear = await getFinanceInfo(listCode[i], 1);
-    let dataQuarter = []; //await getFinanceInfo(listCode[i], 2);
+    let dataQuarter = await getFinanceInfo(listCode[i], 2);
     let data = dataYear.concat(dataQuarter);
-    console.log(`updateFinanceinfo code = ${listCode[i]}, data.length = ${data.length}`);
+    console.log(
+      `Update finance's info code: ${listCode[i]}, data.length: ${data.length}`
+    );
     for (let j = 0; j < data.length; j++) {
       let a = data[j];
       let sqlData = [
@@ -311,18 +338,11 @@ async function updateFinanceinfoByPage(listCode) {
         a.Name,
         a.Unit,
       ];
-      let sql = `INSERT INTO financeinfo(StockCode, ReportTermType, YearPeriod, TermCode, ReportComponentNameEn, NameEn, UnitEn, Value, PeriodBegin, PeriodEnd, ReportComponentName, Name, Unit) 
-      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING;`;
-
-      db.run(sql, sqlData, function (err) {
-        if (err) {
-          console.log('updateFinanceinfo', a.stockCode, sqlData);
-        }
-      });
+      await upsertToDB(sqlData);
     }
   }
-  console.log('commit update financeinfo');
-  db.run('COMMIT');
+  console.log("commit update financeinfo");
+  db.run("COMMIT");
 }
 
 const debug = function () {
@@ -339,10 +359,14 @@ async function getExistsListCode() {
   return data.map((el) => el.StockCode);
 }
 async function runCode() {
-  // await insertUrlToDb();
-  // updateBasicInfo();
-  await updateFinanceinfo();
-  // await updateAllIndustryName();
+  console.log("[INSERT URL TO DB]");
+  await insertUrlToDb();
+  console.log("[UPDATE BASIC INFO]");
+  await updateBasicInfo();
+  console.log("[UPDATE FINANCE INFO]");
+  await updateFinanceinfo(true);
+  console.log("[UPDATE ALL INDUSTRY NAME]");
+  await updateAllIndustryName();
 }
 module.exports = {
   debug,
