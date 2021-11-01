@@ -269,9 +269,12 @@ async function updateFinanceinfoByPage(listCode) {
       if (data[0].length == 0) {
         break;
       }
-      // level 1: Bao cao tai chinh
+      let header = {};
+      for (let i = 0; i < data[0].length; i++) {
+        header[data[0][i].Row] = data[0][i];
+      }
+      // data[1]: Can doi ke toan, chi so tai chinh, ket qua kinh doanh
       for (const property in data[1]) {
-        // level 2: Ket qua kinh doanh, can doi ke toan, chi so tai chinh
         for (let k = 0; k < data[1][property].length; k++) {
           let block = data[1][property];
           let item = block[k];
@@ -286,11 +289,12 @@ async function updateFinanceinfoByPage(listCode) {
           ret.ReportComponentName = item.ReportComponentName;
           for (let j = 0; j < data[0].length; j++) {
             let temp = clone(ret);
-            temp.Value = item["Value" + (j + 1)];
-            temp.YearPeriod = data[0][j].YearPeriod;
-            temp.TermCode = data[0][j].TermCode;
-            temp.PeriodBegin = data[0][j].PeriodBegin;
-            temp.PeriodEnd = data[0][j].PeriodEnd;
+            let header = data[0][j];
+            temp.Value = item["Value" + header.Row];
+            temp.YearPeriod = header.YearPeriod;
+            temp.TermCode = header.TermCode;
+            temp.PeriodBegin = header.PeriodBegin;
+            temp.PeriodEnd = header.PeriodEnd;
             temp.page = i;
             arr.push(temp);
           }
@@ -359,14 +363,14 @@ async function getExistsListCode() {
   return data.map((el) => el.StockCode);
 }
 async function runCode() {
-  console.log("[INSERT URL TO DB]");
-  await insertUrlToDb();
-  console.log("[UPDATE BASIC INFO]");
-  await updateBasicInfo();
-  console.log("[UPDATE FINANCE INFO]");
+  // console.log("[INSERT URL TO DB]");
+  // await insertUrlToDb();
+  // console.log("[UPDATE BASIC INFO]");
+  // await updateBasicInfo();
+  // console.log("[UPDATE FINANCE INFO]");
   await updateFinanceinfo(true);
-  console.log("[UPDATE ALL INDUSTRY NAME]");
-  await updateAllIndustryName();
+  // console.log("[UPDATE ALL INDUSTRY NAME]");
+  // await updateAllIndustryName();
 }
 module.exports = {
   debug,
