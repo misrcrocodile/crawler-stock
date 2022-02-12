@@ -3,8 +3,9 @@ const Schedule = require("node-schedule");
 const VND = require("./src/stocks/Vndirect");
 // const vietstock = require('./src/stocks/VietStock');
 // vietstock.runCode();
+
 // Run everytime code start
-// VND.exec();
+VND.exec();
 
 // Run job every day at 12:00 and 17:00
 Schedule.scheduleJob("0 * * * *", function () {
