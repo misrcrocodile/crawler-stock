@@ -32,14 +32,6 @@ async function exec() {
     await crawlLastestData();
   }
 
-  // Update Data
-  // await updateMACDDashboard();
-  // await updateTodayTopGrow();
-  // await updateTopGrowStock(3);
-  // await updateTopGrowStock(20);
-  // await updateTopGrowStock(60);
-  // await updateTopGrowStock(120);
-
   console.timeEnd('Execute time');
   console.log('DONE RUN EVERY DAY!');
 }
@@ -284,4 +276,5 @@ async function debug() {
 module.exports = {
   exec, // run Everyday job pull data from server and analysis
   debug, // for debug only
+  getListCode,
 };
